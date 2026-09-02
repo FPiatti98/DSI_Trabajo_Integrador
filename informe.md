@@ -479,10 +479,6 @@ Backend aplica reglas de negocio
 
 De esta manera, el prompt funciona como una especificación de extracción entre el lenguaje natural recibido desde el usuario y el sistema determinista encargado de procesar la información.
 
-### B.7 — Hipótesis más riesgosa
-
-La solución propuesta depende de que el LLM pueda clasificar correctamente la intención principal de los emails de TecnoSupply Argentina y extraer información relevante con suficiente precisión; si esta interpretación falla de manera frecuente, la automatización podría generar derivaciones incorrectas y no producir una mejora real respecto al proceso manual.
-
 ## B.6 — Flujo de valor y flujo del sistema
 
 **Flujo de valor:** Email del cliente → interpretación automática → clasificación validada → derivación o respuesta → atención más rápida y consistente.
@@ -523,6 +519,11 @@ Respuesta al cliente o derivación al área responsable
 
 La arquitectura separa claramente interpretación y decisión. El primer LLM interpreta el contenido del email, Pydantic y el backend verifican que los datos sean utilizables, y los sistemas internos actúan como fuente de verdad. Solo después de contar con información validada, un LLM puede utilizarse para redactar una respuesta clara para el cliente.
 
+### SB.7 — Hipótesis más riesgosa
+
+La solución propuesta depende de que el LLM pueda clasificar correctamente la intención principal de los emails de TecnoSupply Argentina y extraer información relevante con suficiente precisión; si esta interpretación falla de manera frecuente, la automatización podría generar derivaciones incorrectas y no producir una mejora real respecto al proceso manual.
+
+
 ---
 
 ## Parte C — Pipeline Funcional Validado
@@ -543,4 +544,4 @@ La confiabilidad del resultado no depende solo del prompt. Gemini genera una sal
 
 El script desarrollado se ubica después de la recepción del email y antes del backend determinista: recibe el texto no estructurado, utiliza el LLM para clasificarlo y extraer datos, y Pydantic valida el contrato de salida. El resultado validado puede utilizarse luego para registrar la clasificación y derivar el mensaje al área correspondiente.
 
-Para convertirse en un sistema completo todavía se requiere integrar un endpoint o servicio de correo, persistir emails y clasificaciones en la base de datos y consultar los sistemas internos para obtener información real sobre pedidos, facturas o productos. También falta incorporar la Base de Conocimiento planteada en la Parte A, que permitiría aportar políticas de atención e información confiable mediante búsqueda semántica o RAG.
+Para convertirse en un sistema completo todavía se requiere integrar un endpoint o servicio de correo, persistir emails y clasificaciones en la base de datos y consultar los sistemas internos para obtener información real sobre pedidos, facturas o productos.
