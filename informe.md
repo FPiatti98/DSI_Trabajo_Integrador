@@ -482,3 +482,65 @@ De esta manera, el prompt funciona como una especificación de extracción entre
 ### B.7 — Hipótesis más riesgosa
 
 La solución propuesta depende de que el LLM pueda clasificar correctamente la intención principal de los emails de TecnoSupply Argentina y extraer información relevante con suficiente precisión; si esta interpretación falla de manera frecuente, la automatización podría generar derivaciones incorrectas y no producir una mejora real respecto al proceso manual.
+
+## B.6 — Flujo de valor y flujo del sistema
+
+**Flujo de valor:** Email del cliente → interpretación automática → clasificación validada → derivación o respuesta → atención más rápida y consistente.
+
+El valor generado consiste en reducir el tiempo que el personal de Atención al Cliente dedica a leer, interpretar y clasificar manualmente los correos. El sistema transforma un mensaje desestructurado en información validada que permite derivarlo al área adecuada o continuar con una consulta segura.
+
+#### Flujo técnico
+
+```text
+Email recibido
+      ↓
+[LLM]
+Extrae intención, prioridad y datos relevantes
+      ↓
+JSON estructurado
+      ↓
+[Código + Pydantic]
+Valida la estructura, los valores permitidos
+y el formato del número de pedido
+      ↓
+¿La salida es válida?
+      │
+      ├── No → Rechazar o registrar el error para revisión
+      │
+      └── Sí
+            ↓
+[SQL / Sistemas internos]
+Consulta o registra información real
+      ↓
+Resultado de negocio validado
+      ↓
+[LLM]
+Genera una respuesta humanizada basada únicamente
+en la información validada
+      ↓
+Respuesta al cliente o derivación al área responsable
+```
+
+La arquitectura separa claramente interpretación y decisión. El primer LLM interpreta el contenido del email, Pydantic y el backend verifican que los datos sean utilizables, y los sistemas internos actúan como fuente de verdad. Solo después de contar con información validada, un LLM puede utilizarse para redactar una respuesta clara para el cliente.
+
+---
+
+## Parte C — Pipeline Funcional Validado
+
+### C.4 — Técnica de prompting
+
+Para el sistema se utilizó la técnica de **Zero-shot prompting**. El modelo recibe un System Prompt que define su rol, las cinco intenciones permitidas, los tres niveles de prioridad, los campos que debe extraer y las reglas que debe respetar. No se incluyen ejemplos previos de emails clasificados dentro del prompt.
+
+Esta elección es adecuada porque la tarea consiste en clasificar un email dentro de un conjunto cerrado de categorías y extraer datos puntuales. El modelo ya cuenta con capacidad para interpretar el lenguaje natural del dominio, mientras que el System Prompt proporciona las restricciones específicas de TecnoSupply Argentina.
+
+No se utilizó Chain of Thought porque el sistema no necesita exponer razonamientos intermedios: la salida requerida es únicamente una clasificación estructurada. Tampoco fue necesario aplicar Few-shot prompting, ya que las seis pruebas del lote validaron correctamente con la configuración Zero-shot.
+
+La confiabilidad del resultado no depende solo del prompt. Gemini genera una salida JSON estructurada según el esquema definido y Pydantic vuelve a validar sus campos antes de que el backend pueda utilizarla. En particular, el caso de prompt injection del lote fue clasificado como una consulta de pedido y no ejecutó la instrucción incluida dentro del email.
+
+---
+
+### C.5 — Cierre: dónde se conecta
+
+El script desarrollado se ubica después de la recepción del email y antes del backend determinista: recibe el texto no estructurado, utiliza el LLM para clasificarlo y extraer datos, y Pydantic valida el contrato de salida. El resultado validado puede utilizarse luego para registrar la clasificación y derivar el mensaje al área correspondiente.
+
+Para convertirse en un sistema completo todavía se requiere integrar un endpoint o servicio de correo, persistir emails y clasificaciones en la base de datos y consultar los sistemas internos para obtener información real sobre pedidos, facturas o productos. También falta incorporar la Base de Conocimiento planteada en la Parte A, que permitiría aportar políticas de atención e información confiable mediante búsqueda semántica o RAG.
