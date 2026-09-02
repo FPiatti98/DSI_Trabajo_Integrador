@@ -519,7 +519,7 @@ Respuesta al cliente o derivación al área responsable
 
 La arquitectura separa claramente interpretación y decisión. El primer LLM interpreta el contenido del email, Pydantic y el backend verifican que los datos sean utilizables, y los sistemas internos actúan como fuente de verdad. Solo después de contar con información validada, un LLM puede utilizarse para redactar una respuesta clara para el cliente.
 
-### SB.7 — Hipótesis más riesgosa
+### B.7 — Hipótesis más riesgosa
 
 La solución propuesta depende de que el LLM pueda clasificar correctamente la intención principal de los emails de TecnoSupply Argentina y extraer información relevante con suficiente precisión; si esta interpretación falla de manera frecuente, la automatización podría generar derivaciones incorrectas y no producir una mejora real respecto al proceso manual.
 
