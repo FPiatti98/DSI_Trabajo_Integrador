@@ -1,5 +1,4 @@
-# Credenciales locales
 .env
-# Archivos generados por Python
+.venv/
 __pycache__/
 *.py[cod]
