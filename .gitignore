@@ -1,0 +1,5 @@
+# Credenciales locales
+.env
+# Archivos generados por Python
+__pycache__/
+*.py[cod]
