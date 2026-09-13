@@ -522,8 +522,6 @@ Para el sistema se utilizó la técnica de **Zero-shot prompting**. El modelo re
 
 Esta elección es adecuada porque la tarea consiste en clasificar un email dentro de un conjunto cerrado de categorías y extraer datos puntuales. El modelo ya cuenta con capacidad para interpretar el lenguaje natural del dominio, mientras que el System Prompt proporciona las restricciones específicas de TecnoSupply Argentina.
 
-No se utilizó Chain of Thought porque el sistema no necesita exponer razonamientos intermedios: la salida requerida es únicamente una clasificación estructurada. Tampoco fue necesario aplicar Few-shot prompting, ya que las seis pruebas del lote validaron correctamente con la configuración Zero-shot.
-
 La confiabilidad del resultado no depende solo del prompt. Gemini genera una salida JSON estructurada según el esquema definido y Pydantic vuelve a validar sus campos antes de que el backend pueda utilizarla. En particular, el caso de prompt injection del lote fue clasificado como una consulta de pedido y no ejecutó la instrucción incluida dentro del email.
 
 ---
