@@ -361,3 +361,29 @@ Se realizaron tres consultas trampa para evaluar recuperación semántica, filtr
 | 3 | “Necesito contratar un seguro para mi auto antes de viajar.” | Prueba de estrés: consulta completamente fuera del catálogo de TecnoSupply Argentina. | Responder que no existe información disponible, sin inventar una respuesta ni usar un documento irrelevante. | El resultado más cercano fue `DOC-002`, con distancia `0.4169`, pero fue rechazado por superar el umbral de aceptación `0.40`. Se respondió: “No tengo información disponible sobre seguros para automóviles”. | Sí |
 
 Las pruebas muestran que la base vectorial recupera intención aunque cambie la redacción, que los metadatos restringen los resultados según reglas deterministas y que el sistema puede rechazar consultas ajenas al dominio en lugar de responder con información no relacionada.
+
+## C.1 — Cadena de coherencia con la Entrega 1
+
+| Elemento de la Entrega 1 | Cómo se implementa en la Entrega 2 |
+|---|---|
+| Columna “Base de Conocimiento” del PEAS | Se transformó en los 15 documentos de `base_conocimiento.json` y luego en la colección persistente `conocimiento_tecnosupply` de ChromaDB. Incluye conocimiento sobre pedidos, envíos, reclamos, facturación, garantía, soporte, stock, pagos, retiro y atención al cliente. |
+| Intenciones de la Matriz de Intenciones | Se relacionan con el metadato `categoria`. Por ejemplo, `CONSULTA_PEDIDO` se vincula con las categorías `pedidos` y `envios`; `RECLAMO` con `reclamos`; `FACTURACION` con `facturacion`; y `SOPORTE` con `soporte`. |
+| Campos de filtrado de la Matriz de Intenciones | Se implementan como metadatos de ChromaDB: `categoria`, `vigente`, `sucursal` y `tags_regionales`. Los filtros deterministas se aplican mediante el parámetro `where` de la búsqueda híbrida. |
+| Texto libre del email | El texto del usuario se transforma en un embedding con Gemini y se utiliza para recuperar documentos por similitud semántica. Esto permite comprender expresiones como “la portátil quedó muerta” aunque no coincidan literalmente con “la notebook no enciende”. |
+| Intención detectada por el LLM | La intención puede utilizarse para construir un filtro de categoría antes de consultar ChromaDB. De esta forma, el LLM orienta la búsqueda, pero no inventa políticas ni respuestas: recupera conocimiento validado desde la base vectorial. |
+| Número de pedido extraído por el LLM | El número de pedido no se resuelve mediante la base vectorial. Se mantiene como dato para consultar el sistema determinista de pedidos, que continúa siendo la fuente de verdad para estados, fechas de entrega, cancelaciones o devoluciones. |
+| Validación y seguridad de la Entrega 1 | La validación con Pydantic y las reglas del backend siguen vigentes. La base vectorial aporta contexto recuperado, pero no reemplaza los controles de datos ni la autorización de operaciones sensibles, como un reclamo, una devolución o un reintegro. |
+
+La Entrega 2 amplía la arquitectura de la Entrega 1: el LLM sigue interpretando la consulta y extrayendo datos, mientras que ChromaDB recupera únicamente el conocimiento pertinente. Las decisiones que modifican información real continúan bajo control del backend determinista.
+
+## C.2 — El umbral de aceptación
+
+Se definió un umbral máximo de distancia coseno de `0.40`. Un documento se considera suficientemente relacionado con la consulta cuando su distancia es menor o igual a ese valor; cuanto menor es la distancia, mayor es la cercanía semántica.
+
+En las Killer Queries, la consulta sobre una notebook que no enciende recuperó el documento de soporte con distancia `0.2521`, por lo que fue aceptada. En cambio, la consulta sobre seguros para automóviles obtuvo como resultado más cercano `DOC-002` con distancia `0.4169`, superior al umbral, y fue rechazada.
+
+Cuando ninguna coincidencia supera el umbral de aceptación, el sistema responde que no posee información disponible sobre esa consulta. Forzar el documento más cercano en ese caso sería una alucinación, porque se utilizaría conocimiento no relacionado para responder al usuario.
+
+## C.3 — Cierre: dónde se conecta
+
+La búsqueda híbrida actualmente devuelve un diccionario de Python con documentos, metadatos y distancias recuperadas desde ChromaDB. Para transformarlo en una respuesta real al usuario falta una capa orquestadora de RAG, que construya un prompt con el contexto recuperado y lo envíe al LLM. Esa capa también debe respetar el umbral de aceptación, validar la respuesta y derivar al backend determinista cuando la consulta implique consultar o modificar datos reales. En una próxima etapa, esta integración podría implementarse con LangChain o con una orquestación propia.

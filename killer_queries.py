@@ -1,4 +1,4 @@
-from busqueda_hibrida import buscar_tecnosupply
+from vector_db import buscar_tecnosupply
 
 
 UMBRAL_RECHAZO = 0.40
