@@ -1,0 +1,242 @@
+[
+  {
+    "id": "DOC-001",
+    "descripcion_semantica": "TecnoSupply Argentina permite consultar el estado de un pedido mediante su número de orden. El sistema interno informa si el pedido se encuentra confirmado, en preparación, despachado, en tránsito, entregado o cancelado. La fecha de entrega mostrada al cliente siempre debe provenir de la información logística actualizada y no de una estimación generada por un modelo de lenguaje.",
+    "metadatos": {
+      "categoria": "pedidos",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "pedido",
+        "envio",
+        "seguimiento",
+        "entrega",
+        "argentina"
+      ]
+    }
+  },
+  {
+    "id": "DOC-002",
+    "descripcion_semantica": "Los pedidos con entrega a domicilio son preparados luego de la confirmación del pago. El cliente recibe un correo con el número de seguimiento cuando el paquete es entregado al operador logístico. Los plazos pueden variar según la localidad, la disponibilidad del producto y la fecha de compra.",
+    "metadatos": {
+      "categoria": "envios",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "envio",
+        "domicilio",
+        "seguimiento",
+        "correo",
+        "interior"
+      ]
+    }
+  },
+  {
+    "id": "DOC-003",
+    "descripcion_semantica": "Cuando un pedido presenta una demora, el área de Atención al Cliente debe consultar el estado real del envío antes de responder. No se debe asegurar una nueva fecha de entrega si el sistema logístico no la informa. Si el pedido permanece detenido durante varios días hábiles, se registra un reclamo para que Postventa realice el seguimiento.",
+    "metadatos": {
+      "categoria": "envios",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "demora",
+        "retraso",
+        "pedido",
+        "reclamo",
+        "postventa"
+      ]
+    }
+  },
+  {
+    "id": "DOC-004",
+    "descripcion_semantica": "La cancelación de un pedido solo puede realizarse antes de que sea despachado. El sistema debe verificar el estado de la orden y las condiciones de pago antes de modificarla. Si la cancelación es aprobada, se inicia el proceso de devolución correspondiente según el medio de pago utilizado.",
+    "metadatos": {
+      "categoria": "pedidos",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "cancelacion",
+        "anulacion",
+        "pedido",
+        "devolucion",
+        "reintegro"
+      ]
+    }
+  },
+  {
+    "id": "DOC-005",
+    "descripcion_semantica": "Si un producto llega dañado, incompleto o con fallas visibles, el cliente debe informar el número de pedido y describir el problema. El backend registra la solicitud de reclamo y la deriva al área de Postventa. La autorización de una devolución, reemplazo o reintegro requiere validar el pedido, el plazo de compra y la evidencia aportada.",
+    "metadatos": {
+      "categoria": "reclamos",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "producto dañado",
+        "reclamo",
+        "devolucion",
+        "postventa",
+        "reintegro"
+      ]
+    }
+  },
+  {
+    "id": "DOC-006",
+    "descripcion_semantica": "Los reintegros se procesan únicamente luego de que el área responsable aprueba la devolución o el reclamo. El plazo de acreditación depende del medio de pago y de la entidad financiera. Atención al Cliente puede informar el estado de una solicitud existente, pero no debe confirmar un reintegro sin una validación previa del sistema.",
+    "metadatos": {
+      "categoria": "reclamos",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "reintegro",
+        "devolucion",
+        "tarjeta",
+        "transferencia",
+        "dinero"
+      ]
+    }
+  },
+  {
+    "id": "DOC-007",
+    "descripcion_semantica": "El cliente puede solicitar una copia de la factura asociada a una compra. Para localizar el comprobante, el área administrativa necesita el número de pedido, el correo utilizado en la compra o los datos del titular. La factura se envía al correo registrado y no debe compartirse con terceros sin validar la identidad.",
+    "metadatos": {
+      "categoria": "facturacion",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "factura",
+        "comprobante",
+        "afip",
+        "compra",
+        "administracion"
+      ]
+    }
+  },
+  {
+    "id": "DOC-008",
+    "descripcion_semantica": "La corrección de datos fiscales en una factura requiere una revisión administrativa. El cliente debe indicar el número de pedido y los datos que necesitan modificarse, como CUIT, razón social o condición fiscal. La emisión de una nota de crédito o una nueva factura es una acción controlada y no puede ser autorizada por el modelo de lenguaje.",
+    "metadatos": {
+      "categoria": "facturacion",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "cuit",
+        "razon social",
+        "factura",
+        "nota de credito",
+        "afip"
+      ]
+    }
+  },
+  {
+    "id": "DOC-009",
+    "descripcion_semantica": "Las notebooks y otros equipos tecnológicos comercializados por TecnoSupply Argentina cuentan con garantía según las condiciones del fabricante y la legislación aplicable. Para iniciar una gestión, el cliente debe informar el modelo del producto, la fecha de compra y una descripción de la falla. La cobertura se confirma luego de revisar la documentación y el diagnóstico técnico.",
+    "metadatos": {
+      "categoria": "garantia",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "garantia",
+        "notebook",
+        "fabricante",
+        "falla",
+        "servicio tecnico"
+      ]
+    }
+  },
+  {
+    "id": "DOC-010",
+    "descripcion_semantica": "Cuando una notebook no enciende, el soporte inicial puede solicitar que el cliente verifique el cargador, la conexión eléctrica y los indicadores luminosos del equipo. Si el problema continúa, la consulta se deriva al servicio técnico con el modelo del producto, el número de serie si está disponible y una descripción de los síntomas.",
+    "metadatos": {
+      "categoria": "soporte",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "notebook",
+        "no enciende",
+        "soporte tecnico",
+        "cargador",
+        "diagnostico"
+      ]
+    }
+  },
+  {
+    "id": "DOC-011",
+    "descripcion_semantica": "La disponibilidad de productos debe consultarse en el sistema de inventario actualizado. El catálogo puede mostrar productos publicados, pero el stock real puede variar por ventas recientes, reservas, devoluciones o ingresos de mercadería. El asistente puede identificar el producto solicitado, pero la confirmación de stock corresponde al backend conectado al inventario.",
+    "metadatos": {
+      "categoria": "stock",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "stock",
+        "disponibilidad",
+        "inventario",
+        "producto",
+        "existencia"
+      ]
+    }
+  },
+  {
+    "id": "DOC-012",
+    "descripcion_semantica": "TecnoSupply Argentina acepta medios de pago habilitados en su tienda, como tarjetas de crédito, débito, transferencias y billeteras virtuales. La confirmación de un pago depende de la respuesta del procesador correspondiente. Si el pago figura pendiente o rechazado, el cliente debe revisar el estado informado por el medio de pago antes de que se prepare el pedido.",
+    "metadatos": {
+      "categoria": "pagos",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "pago",
+        "tarjeta",
+        "transferencia",
+        "mercado pago",
+        "rechazado"
+      ]
+    }
+  },
+  {
+    "id": "DOC-013",
+    "descripcion_semantica": "Los pedidos con retiro en sucursal pueden ser retirados únicamente cuando el sistema indica que están disponibles. El cliente debe presentar el número de pedido y un documento de identidad. Si retira otra persona, debe contar con la autorización requerida y la documentación indicada por Atención al Cliente.",
+    "metadatos": {
+      "categoria": "retiro",
+      "vigente": true,
+      "sucursal": "caba",
+      "tags_regionales": [
+        "retiro",
+        "sucursal",
+        "caba",
+        "documento",
+        "pedido"
+      ]
+    }
+  },
+  {
+    "id": "DOC-014",
+    "descripcion_semantica": "El área de Atención al Cliente responde consultas por email de lunes a viernes, en días hábiles, de 9:00 a 18:00 horas. Las solicitudes recibidas fuera de ese horario se registran y se atienden durante el siguiente período operativo. Los reclamos urgentes vinculados con entregas o productos dañados se derivan según su prioridad.",
+    "metadatos": {
+      "categoria": "atencion",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "horarios",
+        "atencion al cliente",
+        "email",
+        "dias habiles",
+        "argentina"
+      ]
+    }
+  },
+  {
+    "id": "DOC-015",
+    "descripcion_semantica": "Para modificar la dirección de entrega, el cliente debe solicitarlo antes de que el pedido sea despachado. El sistema valida el número de orden, la identidad del titular y el estado logístico antes de permitir cualquier cambio. Una vez que el paquete se encuentra en tránsito, la modificación puede no estar disponible y debe evaluarse con el operador logístico.",
+    "metadatos": {
+      "categoria": "pedidos",
+      "vigente": true,
+      "sucursal": "todas",
+      "tags_regionales": [
+        "direccion",
+        "cambio de domicilio",
+        "envio",
+        "pedido",
+        "logistica"
+      ]
+    }
+  }
+]
