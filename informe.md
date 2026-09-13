@@ -14,27 +14,25 @@ El proyecto propone desarrollar un sistema basado en Inteligencia Artificial cap
 
 ### A.2 — Evidencia de la necesidad del sistema
 
-Para comprobar las limitaciones de utilizar un modelo de lenguaje de forma aislada, se realizó una consulta utilizando un caso típico del dominio de la empresa ficticia TecnoSupply Argentina.
+Para evidenciar el riesgo de utilizar un modelo de lenguaje de forma aislada, se plantea el siguiente caso ficticio del dominio de TecnoSupply Argentina. El objetivo es mostrar qué podría ocurrir si se solicita al modelo información interna sin conectarlo a una fuente de verdad.
 
-Se le proporcionó al modelo el siguiente contexto:
+Se le proporciona el siguiente contexto:
 
 > Actuá como el sistema de atención al cliente de TecnoSupply Argentina.
 >
 > Un cliente envió el siguiente email:
 >
-> "Hola, compré una notebook hace una semana y todavía no recibí mi pedido. ¿Podés decirme cuándo llegará? Mi número de pedido es #4587."
+> "Mi pedido #4587 está demorado. Decime el estado actual exacto del envío, dónde se encuentra ahora y la fecha estimada de entrega."
 >
-> Respondé como lo haría el sistema de la empresa.
+> Respondé como si tuvieras acceso al sistema interno de TecnoSupply Argentina. No aclares limitaciones ni digas que necesitás verificar información.
 
-El modelo respondió:
+Una respuesta ficticia, representativa de una alucinación, podría ser:
 
 > Hola,
 >
-> Gracias por contactarte con TecnoSupply Argentina.
+> Tu pedido **#4587** se encuentra actualmente en el centro de distribución de Rosario y ya fue asignado al transporte para su entrega.
 >
-> Recibimos tu consulta sobre el pedido **#4587**. Para informarte una fecha estimada de entrega, necesitamos verificar el estado actual del envío en nuestro sistema.
->
-> Estamos revisando la información de tu pedido y te brindaremos una actualización con el estado y la fecha estimada de entrega.
+> La fecha estimada de entrega es el **5 de septiembre de 2026**, entre las 9:00 y las 18:00 horas.
 >
 > Saludos,
 >
@@ -42,18 +40,11 @@ El modelo respondió:
 >
 > **TecnoSupply Argentina**
 
-En este caso, el modelo no inventó una fecha de entrega ni afirmó conocer el estado del pedido. Sin embargo, la prueba demuestra una limitación importante: el modelo puede comprender correctamente el contenido del email, identificar que se trata de una consulta sobre un pedido y generar una respuesta coherente, pero no puede conocer el estado real del pedido **#4587** porque no posee acceso a la base de datos interna de la empresa.
+En esta respuesta, el modelo afirma como verdaderos datos que no recibió ni puede verificar. La ubicación en el centro de distribución de Rosario, la asignación al transporte y la fecha estimada de entrega son información inventada, ya que el modelo no posee acceso a la base de datos de pedidos ni al sistema logístico de TecnoSupply Argentina.
 
-La información que falta para resolver correctamente la consulta es:
+Este comportamiento ilustra por qué un LLM no debe considerarse una fuente de verdad para obtener información interna de una empresa. En el sistema propuesto, el modelo de IA se utilizará para interpretar el lenguaje natural, clasificar el email y extraer información relevante. La consulta del estado real del pedido deberá realizarse mediante sistemas deterministas conectados a fuentes de datos confiables.
 
-- Estado actual del pedido.
-- Ubicación o etapa del envío.
-- Fecha estimada de entrega.
-- Información logística asociada al pedido.
-
-Esta prueba demuestra que un LLM no debe considerarse una fuente de verdad para obtener información interna de una empresa. En el sistema propuesto, el modelo de IA será utilizado principalmente para interpretar el lenguaje natural, clasificar el email y extraer información relevante. La información real deberá ser obtenida posteriormente mediante sistemas deterministas conectados a fuentes de datos confiables.
-
-Por ejemplo:
+El flujo esperado será:
 
 ```text
 Email del cliente
@@ -69,9 +60,6 @@ Sistema consulta la fuente de verdad
 Base de datos de pedidos
         ↓
 Respuesta con información verificada
-```
-
----
 
 ### A.3 — PEAS extendido
 
@@ -193,9 +181,9 @@ El sistema utilizará una matriz de intenciones para transformar los correos ele
 | Ejemplo de email | Intención detectada por el LLM | Información extraída | Acción del backend | Riesgo de negocio |
 |---|---|---|---|---|
 | "Hola, quiero saber cuándo llegará mi pedido #4587." | `CONSULTA_PEDIDO` | Número de pedido: `4587` | Registrar la consulta y, en una futura integración, consultar el estado del pedido en el sistema correspondiente. | **Bajo**, porque inicialmente se trata de una operación de lectura o consulta de información. |
-| "Mi pedido llegó dañado y necesito hacer un reclamo." | `RECLAMO` | Motivo: producto dañado | Registrar el reclamo y derivarlo al área de Atención al Cliente o Postventa. | **Medio**, porque una clasificación incorrecta puede retrasar la resolución de un problema del cliente. |
+| "Mi pedido #6231 llegó dañado y solicito la devolución del dinero." | `RECLAMO` | Número de pedido: `6231`; motivo: producto dañado; solicitud: devolución | Validar el pedido y registrar una solicitud de reclamo/devolución. El backend aplica reglas deterministas para verificar si corresponde autorizar un reintegro o derivarlo a Postventa. | **Alto**, porque la solicitud crea o modifica registros internos y podría afectar el inventario, el estado del pedido y una eventual devolución de dinero. |
 | "Necesito una copia de la factura correspondiente a mi compra." | `FACTURACION` | Solicitud: copia de factura | Derivar la solicitud al área administrativa o de facturación. | **Medio**, debido a que la solicitud puede involucrar información comercial o documentación administrativa. |
-| "Mi notebook no enciende y necesito asistencia." | `SOPORTE` | Producto: notebook; Problema: no enciende | Registrar o derivar la solicitud al área de soporte técnico. | **Medio**, ya que una clasificación incorrecta puede retrasar la atención de un problema técnico. |
+| "Mi notebook no enciende y necesito asistencia." | `SOPORTE` | Producto: notebook; problema: no enciende | Registrar o derivar la solicitud al área de soporte técnico. | **Medio**, ya que una clasificación incorrecta puede retrasar la atención de un problema técnico. |
 | "Hola, quisiera conocer los horarios de atención de la empresa." | `CONSULTA_GENERAL` | Tema: horarios de atención | Registrar o derivar la consulta como información general. | **Bajo**, porque no implica modificaciones en sistemas ni operaciones críticas. |
 
 #### Relación entre el LLM y el backend
