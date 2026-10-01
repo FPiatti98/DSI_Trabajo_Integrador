@@ -40,28 +40,36 @@ def prueba_1_jerga():
         print("Resultado: no se encontró información.")
 
 
-def prueba_2_filtro_duro():
+def prueba_2_filtro_vigencia():
     print("\n" + "=" * 70)
-    print("KILLER QUERY 2 — El filtro duro bloquea un resultado semántico")
+    print("KILLER QUERY 2 — El filtro de vigencia bloquea una política vencida")
 
-    consulta = "Mi notebook no enciende y necesito asistencia técnica."
+    consulta = (
+        "¿Mi notebook llega dentro de 24 horas? "
+        "Necesito una entrega express."
+    )
 
-    resultado_crudo, _ = buscar_tecnosupply(
+    resultado_sin_filtro, where_sin_filtro = buscar_tecnosupply(
         query_semantica=consulta,
-        solo_activos=True,
+        categoria="envios",
+        sucursal="CABA",
+        solo_activos=False,
         n_resultados=1,
     )
 
-    dato_crudo = primer_resultado(resultado_crudo)
+    dato_sin_filtro = primer_resultado(resultado_sin_filtro)
 
-    print("Búsqueda semántica sin filtro:")
-    if dato_crudo:
-        print(f"Resultado: {dato_crudo['id']}")
-        print(f"Distancia: {dato_crudo['distancia']:.4f}")
+    print("Búsqueda sin filtro de vigencia:")
+    print(f"Filtro aplicado: {where_sin_filtro}")
 
-    resultado_hibrido, where = buscar_tecnosupply(
+    if dato_sin_filtro:
+        print(f"Resultado: {dato_sin_filtro['id']}")
+        print(f"Distancia: {dato_sin_filtro['distancia']:.4f}")
+        print(f"Documento: {dato_sin_filtro['documento']}")
+
+    resultado_hibrido, where_hibrido = buscar_tecnosupply(
         query_semantica=consulta,
-        categoria="soporte",
+        categoria="envios",
         sucursal="CABA",
         solo_activos=True,
         n_resultados=1,
@@ -69,16 +77,15 @@ def prueba_2_filtro_duro():
 
     dato_hibrido = primer_resultado(resultado_hibrido)
 
-    print(f"\nFiltro aplicado: {where}")
+    print("\nBúsqueda híbrida con solo documentos vigentes:")
+    print(f"Filtro aplicado: {where_hibrido}")
 
     if dato_hibrido:
         print(f"Resultado híbrido: {dato_hibrido['id']}")
         print(f"Distancia: {dato_hibrido['distancia']:.4f}")
+        print(f"Documento: {dato_hibrido['documento']}")
     else:
-        print(
-            "Resultado híbrido: no existe un documento de soporte "
-            "específico para la sucursal CABA."
-        )
+        print("Resultado híbrido: no se encontró información.")
 
 
 def prueba_3_fuera_catalogo():
@@ -116,7 +123,7 @@ def main():
     print("=== Killer Queries — TecnoSupply Argentina ===")
 
     prueba_1_jerga()
-    prueba_2_filtro_duro()
+    prueba_2_filtro_vigencia()
     prueba_3_fuera_catalogo()
 
 

@@ -43,8 +43,13 @@ def construir_where(categoria, sucursal, solo_activos):
         )
 
     if sucursal:
+        sucursales_validas = [sucursal]
+
+        if sucursal != "todas":
+            sucursales_validas.append("todas")
+
         condiciones.append(
-            {"sucursal": {"$eq": sucursal}}
+            {"sucursal": {"$in": sucursales_validas}}
         )
 
     if solo_activos:

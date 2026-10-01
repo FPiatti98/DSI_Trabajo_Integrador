@@ -4,15 +4,28 @@
 
 ## A.1 — Autopsia del contexto estático
 
-En TecnoSupply Argentina, la Base de Conocimiento contendrá inicialmente al menos 15 documentos relacionados con políticas de envíos, devoluciones, facturación, garantías, soporte técnico, productos y horarios de atención. Incluir todos estos documentos dentro del System Prompt en cada consulta no representa una solución escalable.
+Para medir el impacto real de incluir toda la Base de Conocimiento dentro del prompt, se ejecutó `tests/token_test.py` utilizando el modelo `gemini-2.5-flash`.
 
-| Problema | Aplicado al dominio de TecnoSupply Argentina |
+La base de conocimiento contiene 15 documentos. La medición obtuvo los siguientes resultados:
+
+```text
+Tokens de la base completa: 2407
+Tokens del prompt estático completo: 2488
+Costo estimado por consulta: USD 0.000746
+Costo estimado por 1.000 consultas: USD 0.7464
+```
+
+El costo se calculó usando el precio de entrada estándar de Gemini 2.5 Flash: USD 0,30 por cada millón de tokens de entrada. El cálculo contempla únicamente los tokens de entrada; no incluye los tokens de salida generados por el modelo.
+
+| Problema | Aplicado a TecnoSupply Argentina |
 |---|---|
-| **Desangre de tokens** | La base inicial contiene al menos 15 documentos y crecerá a medida que se agreguen nuevas políticas, productos y procedimientos. Si todos los documentos se envían en cada consulta, se consumen tokens aunque la mayoría no sea relevante. Esto aumenta el costo y la latencia de cada clasificación o respuesta. |
-| **Lost in the Middle** | Una política importante, como el procedimiento para devolver una notebook dañada, puede quedar entre documentos sobre facturación, envíos y horarios de atención. Aunque esté presente en el prompt, el modelo puede no priorizarla correctamente dentro de un bloque extenso de texto. |
-| **Inconsistencia de estado concurrente** | El estado de un pedido, el stock disponible, la fecha estimada de entrega y la disponibilidad de un producto pueden cambiar mientras el cliente mantiene una conversación. Un prompt estático puede contener información desactualizada y producir una respuesta incorrecta. |
+| Desangre de tokens | La base actual de 15 documentos consume 2407 tokens. Al incluir también instrucciones y una consulta de ejemplo, el prompt estático alcanza 2488 tokens. Esto ocurre en cada interacción aunque el cliente solo necesite información sobre soporte, facturación o envíos. Con la tarifa de referencia, el costo estimado es USD 0,000746 por consulta y USD 0,7464 por cada 1000 consultas, sin incluir la respuesta generada. A medida que se agreguen políticas, productos, sucursales y procedimientos, este costo y la latencia crecerán de forma lineal. |
+| Lost in the Middle | Si el cliente consulta por una notebook que no enciende, el documento relevante de soporte puede quedar entre políticas de envío, facturación, garantías, pagos y retiro. Aunque el modelo reciba toda la información, puede prestar menos atención al contenido relevante si este se encuentra en el medio de un bloque extenso. |
+| Inconsistencia de estado concurrente | Datos como el estado de un pedido, el stock disponible, una fecha de entrega o las condiciones de una devolución pueden cambiar mientras el cliente mantiene una conversación. Un prompt estático podría conservar información desactualizada y responder con una política o disponibilidad que ya no representa el estado real del negocio. |
 
-Una consulta SQL como `SELECT ... WHERE descripcion LIKE '%...%'` tampoco resuelve este problema porque busca coincidencias textuales exactas. Un cliente puede expresar la misma necesidad con sinónimos, lenguaje informal, errores ortográficos o frases distintas, por ejemplo “mi compu no prende” en lugar de “soporte técnico para notebook”. La búsqueda semántica permite recuperar documentos según su significado y no solo por palabras idénticas.
+Un `SELECT ... WHERE descripcion LIKE '%...%'` tampoco resuelve el problema porque busca coincidencias literales, no significado. Por ejemplo, una consulta como “la portátil quedó muerta” no contiene exactamente “notebook no enciende”, aunque ambas expresen la misma necesidad de soporte. Además, `LIKE` no combina de forma natural la similitud semántica con filtros de negocio como categoría, vigencia o sucursal.
+
+> Referencia de precio: [Gemini Developer API Pricing](https://ai.google.dev/gemini-api/docs/pricing).
 
 ## A.2 — Similitud coseno a mano
 
@@ -164,6 +177,28 @@ Cada documento contiene un identificador, una `descripcion_semantica` redactada 
 Se aplicó la Regla del Arquitecto para definir el esquema. Los campos que pueden requerir filtros exactos se guardan como metadatos: `categoria` permite filtrar por tipo de información, `vigente` indica si el documento puede utilizarse y `sucursal` permite restringir información según la ubicación. El campo `tags_regionales` incorpora términos locales, sinónimos y expresiones habituales en Argentina.
 
 La información narrativa, como procedimientos, condiciones, explicaciones y matices de cada política, se mantiene en `descripcion_semantica`. Este campo será transformado en embeddings para permitir búsquedas por significado.
+
+## A.4 
+
+### Resultados de las consultas de prueba
+
+El script construyó un índice FAISS con los 15 documentos de `base_conocimiento.json`. Se utilizó `IndexFlatL2` con vectores normalizados y se realizaron tres búsquedas semánticas con los tres resultados más cercanos (`top-K = 3`).
+
+En esta métrica, una distancia L2 menor indica una mayor cercanía semántica entre la consulta y el documento recuperado.
+
+| Consulta | Ranking | Documento recuperado | Categoría | Distancia L2 | Interpretación |
+|---|---:|---|---|---:|---|
+| “¿Dónde está mi pedido #4587 y cuándo llegará?” | 1 | `DOC-002` | envíos | 0.5616 | Recuperó información sobre entregas, seguimiento y plazos. |
+|  | 2 | `DOC-001` | pedidos | 0.5742 | Recuperó el procedimiento de consulta de estado de pedido. |
+|  | 3 | `DOC-003` | envíos | 0.6381 | Recuperó el procedimiento ante demoras de entrega. |
+| “Mi notebook no enciende y necesito asistencia técnica.” | 1 | `DOC-010` | soporte | 0.3878 | Recuperó correctamente el procedimiento de soporte para una notebook que no enciende. |
+|  | 2 | `DOC-009` | garantía | 0.6075 | Recuperó información relacionada con garantía y diagnóstico técnico. |
+|  | 3 | `DOC-014` | atención | 0.7570 | Recuperó información general sobre la atención al cliente. |
+| “El producto llegó roto y quiero devolverlo.” | 1 | `DOC-005` | reclamos | 0.5042 | Recuperó correctamente el procedimiento para reclamo, devolución o reintegro por producto dañado. |
+|  | 2 | `DOC-004` | pedidos | 0.6439 | Recuperó información relacionada con cancelaciones y devoluciones. |
+|  | 3 | `DOC-009` | garantía | 0.7033 | Recuperó información complementaria sobre cobertura y evaluación técnica. |
+
+Los resultados muestran que el índice FAISS recuperó como primer resultado el documento más pertinente en las tres consultas. Los siguientes resultados también pertenecen a categorías relacionadas, aunque presentan una distancia mayor y, por lo tanto, una menor relevancia semántica.
 
 ## A.5 — Prueba destructiva: volatilidad de la RAM
 
