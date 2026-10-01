@@ -1,7 +1,7 @@
 from vector_db import buscar_tecnosupply
 
 
-UMBRAL_RECHAZO = 0.40
+UMBRAL_RECHAZO = 0.35
 
 
 def primer_resultado(resultado):

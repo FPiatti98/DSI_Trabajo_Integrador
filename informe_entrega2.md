@@ -280,6 +280,47 @@ La verificación devolvió la nueva descripción semántica, junto con los metad
 
 Se utilizó `upsert` porque permite crear el documento si no existe o actualizarlo si ya existe, manteniendo el mismo identificador. No se utilizó `add` porque produciría un error ante un ID existente, ni `update` porque solo funciona cuando se tiene certeza de que el documento ya fue creado.
 
+### Verificación con `get()`
+
+Luego del `upsert`, se verificó el documento actualizado mediante:
+
+```python
+coleccion.get(
+    ids=["DOC-011"],
+    include=["documents", "metadatas"],
+)
+```
+
+La salida obtenida fue:
+
+```json
+{
+  "ids": [
+    "DOC-011"
+  ],
+  "embeddings": null,
+  "documents": [
+    "Actualización operativa de stock: la notebook Lenovo ThinkPad E14 se encuentra temporalmente sin disponibilidad para entrega inmediata en TecnoSupply Argentina. El próximo ingreso estimado de unidades es durante la próxima semana. Atención al Cliente debe evitar confirmar una venta hasta que el sistema de inventario informe stock disponible."
+  ],
+  "uris": null,
+  "included": [
+    "documents",
+    "metadatas"
+  ],
+  "data": null,
+  "metadatas": [
+    {
+      "tags_regionales": "stock, disponibilidad, notebook, ingreso de mercadería",
+      "categoria": "stock",
+      "sucursal": "todas",
+      "vigente": true
+    }
+  ]
+}
+```
+
+El resultado confirma que `DOC-011` conserva su identificador y que ChromaDB almacenó la nueva descripción semántica y los metadatos actualizados.
+
 ## B.4 — CLI de búsqueda híbrida
 
 Se desarrolló el script `busqueda_hibrida.py`, que implementa una búsqueda híbrida sobre la colección persistente `conocimiento_tecnosupply`.
@@ -336,8 +377,10 @@ El sistema generó el siguiente filtro dentro de ChromaDB:
 El resultado recuperado fue `DOC-010`, correspondiente al procedimiento de soporte para una notebook que no enciende, con una distancia coseno de `0.2313`.
 
 ![alt text](B4_Captura.png)
+![alt text](B4_Captura_2.png)
+![alt text](B4_Captura_3.png)
 
-La captura de consola adjunta evidencia que la recuperación combinó correctamente similitud semántica y filtros deterministas, sin realizar post-filtrado manual en Python.
+Las capturas de consola adjuntan evidencia que la recuperación combinó correctamente similitud semántica y filtros deterministas, sin realizar post-filtrado manual en Python.
 
 ## B.5 — ETL y purga semántica
 
