@@ -167,3 +167,115 @@ Las dos ejecuciones demuestran que el sistema mantiene trazabilidad entre la res
 
 ![alt text](evidencia_A4.1.png)
 ![alt text](evidencia_A4.2.png)
+
+## Parte B — RAG avanzado: chunking y reranking
+
+### B.1 — Identificación de una falla del RAG básico
+
+Se evaluó el RAG básico con una consulta compleja que requiere combinar cuatro procedimientos diferentes:
+
+```text
+La notebook llegó rota y no enciende. Además, la factura tiene mal cargado el CUIT y necesito cambiar la dirección de entrega antes de que salga el pedido. ¿Qué debo hacer?
+```
+
+La respuesta correcta debía combinar información de los siguientes documentos:
+
+| Requisito de la consulta | Documento esperado |
+|---|---|
+| Reclamo por producto dañado | `DOC-005` |
+| Verificaciones iniciales si la notebook no enciende | `DOC-010` |
+| Corrección de CUIT en la factura | `DOC-008` |
+| Cambio de dirección antes del despacho | `DOC-015` |
+
+Sin embargo, el RAG básico recuperó únicamente:
+
+| Ranking | Documento recuperado | Categoría | Distancia |
+|---:|---|---|---:|
+| 1 | `DOC-008` | facturación | 0.2654 |
+| 2 | `DOC-005` | reclamos | 0.2789 |
+| 3 | `DOC-009` | garantía | 0.2912 |
+
+La respuesta respondió parcialmente sobre el reclamo y la corrección del CUIT, pero omitió las verificaciones iniciales de la notebook que no enciende (`DOC-010`) y no pudo responder sobre el cambio de dirección (`DOC-015`), a pesar de que ese conocimiento existe en la base.
+
+La causa técnica es el límite de recuperación `k=3`: la consulta contiene cuatro necesidades diferentes, pero el retriever solo entrega tres documentos al LLM. Además, uno de los resultados recuperados (`DOC-009`, garantía) aporta información relacionada, pero no responde directamente a ninguna de las cuatro condiciones principales. Esto introduce ruido en el contexto y desplaza documentos relevantes fuera del top-K, un caso de recuperación incompleta y *Lost in the Middle*. 
+
+### B.2 — Chunking con solapamiento
+
+Se creó una segunda colección persistente llamada `conocimiento_tecnosupply_chunks`, sin modificar la colección original de la Entrega 2.
+
+El corpus se reindexó con `RecursiveCharacterTextSplitter` utilizando la siguiente configuración:
+
+```text
+Tamaño de chunk: 250 caracteres
+Solapamiento: 50 caracteres
+```
+
+| Métrica | Valor |
+|---|---:|
+| Documentos originales | 15 |
+| Chunks generados | 30 |
+| Colección persistente | `conocimiento_tecnosupply_chunks` |
+
+Luego se repitió la misma consulta compleja utilizada en B.1, manteniendo `k=3`.
+
+| Ranking | Chunk recuperado | Documento original | Categoría | Distancia |
+|---:|---|---|---|---:|
+| 1 | `DOC-008_chunk_0` | `DOC-008` | facturación | 0.2754 |
+| 2 | `DOC-005_chunk_0` | `DOC-005` | reclamos | 0.2794 |
+| 3 | `DOC-008_chunk_1` | `DOC-008` | facturación | 0.2916 |
+
+La respuesta obtenida fue:
+
+```text
+No poseo información suficiente en la base de conocimiento para responder esa consulta.
+```
+
+El chunking con solapamiento aumentó la granularidad del corpus, pasando de 15 documentos a 30 chunks. Sin embargo, no resolvió la falla de B.1 con `k=3`: dos chunks del mismo documento de facturación ocuparon dos posiciones del top-K, mientras que los documentos necesarios sobre soporte (`DOC-010`) y cambio de dirección (`DOC-015`) no fueron recuperados.
+
+Esto evidencia un problema de ruido y redundancia entre chunks solapados. El chunking permite aislar fragmentos más específicos, pero requiere ampliar la recuperación inicial y aplicar una etapa adicional de reranking o diversidad para evitar que varios chunks similares del mismo documento desplacen información complementaria.
+
+## B.3 — Reranking con LLM
+
+Para mejorar la recuperación obtenida con chunking, se implementó una estrategia de dos etapas:
+
+1. Se recuperan los 8 chunks semánticamente más cercanos desde la colección `conocimiento_tecnosupply_chunks`.
+2. Un LLM actúa como juez y selecciona los chunks más relevantes, evitando duplicados del mismo documento original y priorizando la cobertura completa de la consulta.
+
+### Consulta de prueba
+
+> La notebook llegó rota y no enciende. Además, la factura tiene mal cargado el CUIT y necesito cambiar la dirección de entrega antes de que salga el pedido. ¿Qué debo hacer?
+
+### Resultado de la recuperación inicial
+
+La búsqueda inicial recuperó 8 chunks. Entre ellos había información relevante, pero también chunks redundantes o menos útiles, como fragmentos adicionales de facturación, garantía y cancelación.
+
+| Chunk | Documento original | Categoría | Distancia |
+|---|---|---|---:|
+| `DOC-008_chunk_0` | DOC-008 | Facturación | 0.2754 |
+| `DOC-005_chunk_0` | DOC-005 | Reclamos | 0.2794 |
+| `DOC-008_chunk_1` | DOC-008 | Facturación | 0.2916 |
+| `DOC-009_chunk_0` | DOC-009 | Garantía | 0.3005 |
+| `DOC-004_chunk_0` | DOC-004 | Pedidos | 0.3027 |
+| `DOC-015_chunk_0` | DOC-015 | Pedidos | 0.3039 |
+| `DOC-005_chunk_1` | DOC-005 | Reclamos | 0.3048 |
+| `DOC-015_chunk_1` | DOC-015 | Pedidos | 0.3142 |
+
+### Chunks seleccionados por el reranker
+
+| Chunk seleccionado | Aporte a la respuesta |
+|---|---|
+| `DOC-005_chunk_0` | Explica cómo iniciar el reclamo por producto dañado. |
+| `DOC-008_chunk_0` | Indica el procedimiento para corregir el CUIT de una factura. |
+| `DOC-015_chunk_0` | Explica que el cambio de dirección debe solicitarse antes del despacho. |
+
+### Respuesta generada
+
+> Para la notebook que llegó rota y no enciende, debe informar el número de pedido y describir el problema.  
+>
+> Para la corrección del CUIT en la factura, debe indicar el número de pedido y los datos que necesitan modificarse.  
+>
+> Para cambiar la dirección de entrega, debe solicitarlo antes de que el pedido sea despachado.
+
+### Análisis
+
+El reranking mejoró la cobertura de la consulta compleja. A diferencia del RAG básico, que no recuperaba la información sobre el cambio de dirección, el pipeline avanzado seleccionó evidencia de reclamos, facturación y pedidos. Además, descartó chunks redundantes y documentos menos relevantes, como los relacionados con garantía o cancelación.

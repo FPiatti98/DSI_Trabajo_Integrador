@@ -26,7 +26,7 @@ RESPUESTA_ESCAPE = (
 
 
 class RetrieverChromaGemini(BaseRetriever):
-    """Retriever de LangChain conectado a la colección ChromaDB de Entrega 2."""
+    """Retriever de LangChain conectado a una colección ChromaDB."""
 
     persist_directory: str
     collection_name: str
@@ -92,7 +92,10 @@ class RetrieverChromaGemini(BaseRetriever):
         return documentos
 
 
-def crear_retriever(k=3):
+def crear_retriever(
+    k=3,
+    collection_name=NOMBRE_COLECCION,
+):
     load_dotenv(CARPETA_RAIZ / ".env")
 
     api_key = os.getenv("GEMINI_API_KEY")
@@ -101,7 +104,7 @@ def crear_retriever(k=3):
 
     return RetrieverChromaGemini(
         persist_directory=str(RUTA_CHROMA),
-        collection_name=NOMBRE_COLECCION,
+        collection_name=collection_name,
         api_key=api_key,
         embedding_model=os.getenv(
             "GEMINI_EMBEDDING_MODEL",
@@ -153,8 +156,14 @@ def crear_llm():
     return RunnableLambda(invocar_gemini)
 
 
-def crear_cadena_rag(k=3):
-    retriever = crear_retriever(k=k)
+def crear_cadena_rag(
+    k=3,
+    collection_name=NOMBRE_COLECCION,
+):
+    retriever = crear_retriever(
+        k=k,
+        collection_name=collection_name,
+    )
 
     prompt = ChatPromptTemplate.from_template(
         f"""Sos el asistente de atención al cliente de TecnoSupply Argentina.
