@@ -1,0 +1,25 @@
+{
+  "cantidad_consultas": 10,
+  "metricas": {
+    "faithfulness": {
+      "basico": 0.775,
+      "avanzado": 0.4833,
+      "delta": -0.2917
+    },
+    "answer_relevancy": {
+      "basico": 0.526,
+      "avanzado": 0.4133,
+      "delta": -0.1127
+    },
+    "context_precision": {
+      "basico": 0.7333,
+      "avanzado": 0.6111,
+      "delta": -0.1222
+    },
+    "context_recall": {
+      "basico": 0.8222,
+      "avanzado": 0.9444,
+      "delta": 0.1222
+    }
+  }
+}

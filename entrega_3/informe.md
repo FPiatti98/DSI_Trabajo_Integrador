@@ -279,3 +279,72 @@ La búsqueda inicial recuperó 8 chunks. Entre ellos había información relevan
 ### Análisis
 
 El reranking mejoró la cobertura de la consulta compleja. A diferencia del RAG básico, que no recuperaba la información sobre el cambio de dirección, el pipeline avanzado seleccionó evidencia de reclamos, facturación y pedidos. Además, descartó chunks redundantes y documentos menos relevantes, como los relacionados con garantía o cancelación.
+
+## B.4 — Trazabilidad del pipeline con LangSmith
+
+Se configuró LangSmith para registrar y visualizar la ejecución del RAG avanzado. La captura de evidencia se encuentra en el archivo `langsmith_trace.png`.
+
+La traza corresponde a la consulta compleja utilizada en B.1:
+
+> La notebook llegó rota y no enciende. Además, la factura tiene mal cargado el CUIT y necesito cambiar la dirección de entrega antes de que salga el pedido. ¿Qué debo hacer?
+
+La ejecución registrada muestra tres etapas exitosas:
+
+| Etapa en LangSmith | Función dentro del pipeline | Resultado observado |
+|---|---|---|
+| `recuperacion_chunks` | Recuperación semántica inicial | Se recuperaron 8 chunks candidatos desde ChromaDB. |
+| `reranking_llm` | Selección de evidencia con Gemini | Se priorizaron los chunks de reclamos, facturación y cambio de dirección. |
+| `RunnableSequence` | Generación de respuesta final | Se generó una respuesta fundamentada en los documentos seleccionados. |
+
+La traza permite auditar el recorrido completo de la información: desde la consulta del usuario, pasando por la recuperación y el reranking, hasta la respuesta final. Esto aporta observabilidad al sistema y facilita detectar problemas de recuperación, contexto redundante o respuestas no fundamentadas.
+
+![alt text](langsmith_trace.png)
+
+# Parte C — Evaluación del sistema RAG
+
+## C.1 — Dataset dorado
+
+Se construyó un dataset dorado de 10 consultas para evaluar el comportamiento del sistema RAG. Cada caso contiene una pregunta, una respuesta de referencia y los documentos que deberían recuperarse.
+
+| Tipo de consulta | Cantidad | Casos |
+|---|---:|---|
+| Simples | 3 | Factura, producto dañado y soporte técnico. |
+| Complejas | 3 | Reclamo con devolución, gestión de factura y modificación de pedido. |
+| Fuera de dominio / escape | 2 | Heladeras industriales y ataque de complacencia. |
+| Informales | 2 | Consultas con sinónimos y lenguaje coloquial. |
+
+El dataset se guarda en `dataset_dorado.json` y se utilizará como fuente de evaluación en las métricas de RAGAS.
+
+## C.2 — Evaluación cuantitativa con RAGAS
+
+Se evaluó el RAG básico sobre las 10 consultas del dataset dorado utilizando RAGAS. Debido a las limitaciones de cuota de Gemini, se utilizó Ollama local con el modelo `qwen2.5:3b` como LLM evaluador y `nomic-embed-text` para embeddings de evaluación.
+
+| Métrica | Resultado |
+|---|---:|
+| Faithfulness | 0.7750 |
+| Answer relevancy | 0.5260 |
+| Context precision | 0.7333 |
+| Context recall | 0.8222 |
+
+El RAG básico obtuvo un buen valor de Faithfulness, lo que indica que sus respuestas suelen mantenerse dentro de la evidencia recuperada. Sin embargo, Answer Relevancy fue más bajo, señalando que algunas respuestas no cubrieron completamente la intención del usuario.
+
+## C.3 — Comparación entre RAG básico y RAG avanzado
+
+El RAG básico recupera los tres documentos semánticamente más cercanos. El RAG avanzado recupera 12 chunks, aplica reranking, elimina duplicados y asegura evidencia para las subconsultas detectadas.
+
+| Métrica | RAG básico | RAG avanzado | Delta |
+|---|---:|---:|---:|
+| Faithfulness | 0.7750 | 0.4833 | -0.2917 |
+| Answer relevancy | 0.5260 | 0.4133 | -0.1127 |
+| Context precision | 0.7333 | 0.6111 | -0.1222 |
+| Context recall | 0.8222 | 0.9444 | +0.1222 |
+
+El RAG avanzado mejoró Context Recall en 0.1222 puntos. Esto indica que recuperó evidencia para una mayor cantidad de partes de las consultas complejas, especialmente cuando combinaban reclamos, facturación, soporte y cambios de pedido.
+
+Sin embargo, disminuyeron Faithfulness, Answer Relevancy y Context Precision. La causa principal es que el modelo local utilizado en el reranking y en la generación tendió a reformular información e introducir detalles no presentes de forma explícita en los chunks recuperados. Por lo tanto, la arquitectura avanzada mejoró la cobertura de contexto, pero necesita reforzar sus guardrails de generación para evitar inferencias no fundamentadas.
+
+## C.4 — Diagnóstico y mejora futura
+
+La métrica más baja del RAG avanzado fue **Answer Relevancy**, con un valor de **0.4133**. Aunque el reranking mejoró la cobertura de contexto, el modelo local puede responder solo una parte de las consultas compuestas o agregar reformulaciones que no son necesarias para la pregunta.
+
+Como mejora futura, se propone descomponer cada consulta compleja en subconsultas (por ejemplo: reclamo, factura y envío), recuperar evidencia específica para cada una y generar una respuesta con una sección por subtema. Además, se incorporaría una validación final que descarte afirmaciones que no estén respaldadas explícitamente por los chunks seleccionados. Esto debería aumentar la relevancia de la respuesta y, al mismo tiempo, mejorar la fidelidad.
