@@ -170,34 +170,13 @@ Las dos ejecuciones demuestran que el sistema mantiene trazabilidad entre la res
 
 ## Parte B — RAG avanzado: chunking y reranking
 
-### B.1 — Identificación de una falla del RAG básico
+### B.1 — Limitación del RAG básico: ruido en el contexto y k insuficiente
 
-Se evaluó el RAG básico con una consulta compleja que requiere combinar cuatro procedimientos diferentes:
+La consulta combina varias intenciones: reclamo por producto dañado, soporte por notebook que no enciende, corrección de CUIT y cambio de dirección de entrega.
 
-```text
-La notebook llegó rota y no enciende. Además, la factura tiene mal cargado el CUIT y necesito cambiar la dirección de entrega antes de que salga el pedido. ¿Qué debo hacer?
-```
+El RAG básico recupera solo los `k=3` documentos semánticamente más cercanos. En la evidencia obtenida, `DOC-009` (garantía) ocupa una posición de bajo valor para la consulta y desplaza documentos más relevantes, como `DOC-010` (soporte técnico) y `DOC-015` (cambio de dirección). Por eso la respuesta no cubre correctamente todas las partes de la consulta.
 
-La respuesta correcta debía combinar información de los siguientes documentos:
-
-| Requisito de la consulta | Documento esperado |
-|---|---|
-| Reclamo por producto dañado | `DOC-005` |
-| Verificaciones iniciales si la notebook no enciende | `DOC-010` |
-| Corrección de CUIT en la factura | `DOC-008` |
-| Cambio de dirección antes del despacho | `DOC-015` |
-
-Sin embargo, el RAG básico recuperó únicamente:
-
-| Ranking | Documento recuperado | Categoría | Distancia |
-|---:|---|---|---:|
-| 1 | `DOC-008` | facturación | 0.2654 |
-| 2 | `DOC-005` | reclamos | 0.2789 |
-| 3 | `DOC-009` | garantía | 0.2912 |
-
-La respuesta respondió parcialmente sobre el reclamo y la corrección del CUIT, pero omitió las verificaciones iniciales de la notebook que no enciende (`DOC-010`) y no pudo responder sobre el cambio de dirección (`DOC-015`), a pesar de que ese conocimiento existe en la base.
-
-La causa técnica es el límite de recuperación `k=3`: la consulta contiene cuatro necesidades diferentes, pero el retriever solo entrega tres documentos al LLM. Además, uno de los resultados recuperados (`DOC-009`, garantía) aporta información relacionada, pero no responde directamente a ninguna de las cuatro condiciones principales. Esto introduce ruido en el contexto y desplaza documentos relevantes fuera del top-K, un caso de recuperación incompleta y *Lost in the Middle*. 
+El problema se clasifica como **ruido en el contexto combinado con un k insuficiente**: se recupera evidencia parcialmente relacionada, pero no alcanza la cantidad de documentos para incluir todas las fuentes necesarias. No corresponde clasificarlo como *Lost in the Middle*, ya que ese fenómeno requiere que la evidencia relevante esté presente dentro de un contexto largo pero quede ignorada por su posición intermedia; aquí, parte de la evidencia directamente no llega al top-k.
 
 ### B.2 — Chunking con solapamiento
 
@@ -326,11 +305,34 @@ Se evaluó el RAG básico sobre las 10 consultas del dataset dorado utilizando R
 | Context precision | 0.7333 |
 | Context recall | 0.8222 |
 
+### Resultados por consulta
+
+El siguiente desglose permite identificar qué casos explican los promedios agregados. Los valores fueron obtenidos de `resultados_ragas_basico.json`.
+
+| ID | Tipo | Faithfulness | Context precision | Context recall | Answer relevancy |
+|---|---|---:|---:|---:|---:|
+| GD-01 | Simple | 1.0000 | 1.0000 | 0.4000 | 0.8339 |
+| GD-02 | Simple | 1.0000 | 0.8333 | N/D | 0.4707 |
+| GD-03 | Simple | 1.0000 | 1.0000 | 1.0000 | 0.8008 |
+| GD-04 | Compleja | 0.5000 | 1.0000 | 1.0000 | 0.4459 |
+| GD-05 | Compleja | 0.7500 | 1.0000 | 1.0000 | 0.7162 |
+| GD-06 | Compleja | 0.5000 | 1.0000 | 1.0000 | 0.6821 |
+| GD-07 | Escape | 1.0000 | 0.0000 | 1.0000 | 0.0000 |
+| GD-08 | Escape | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
+| GD-09 | Informal | 1.0000 | 1.0000 | 1.0000 | 0.6615 |
+| GD-10 | Informal | 1.0000 | 0.5000 | 1.0000 | 0.6492 |
+
+El menor valor de **Answer Relevancy** aparece en las consultas de escape GD-07 y GD-08. Esto no significa necesariamente que el comportamiento sea incorrecto: en ambos casos el sistema respondió con una cláusula de escape segura, en lugar de inventar información. Sin embargo, RAGAS compara la respuesta con la intención literal de la pregunta, por lo que puede penalizar este tipo de respuesta segura.
+
+En las consultas complejas, GD-04 y GD-06 presentan valores menores de Faithfulness (0.5000). Esto indica que, al combinar varias intenciones en una misma respuesta, el modelo puede reformular o incluir información que no queda respaldada de forma completamente explícita por el contexto.
+
+El valor de Context Recall de GD-02 quedó como `N/D` debido a un error de parseo del evaluador local durante esa métrica. Por ese motivo, el promedio de Context Recall se calculó con los casos válidos disponibles.
+
 El RAG básico obtuvo un buen valor de Faithfulness, lo que indica que sus respuestas suelen mantenerse dentro de la evidencia recuperada. Sin embargo, Answer Relevancy fue más bajo, señalando que algunas respuestas no cubrieron completamente la intención del usuario.
 
 ## C.3 — Comparación entre RAG básico y RAG avanzado
 
-El RAG básico recupera los tres documentos semánticamente más cercanos. El RAG avanzado recupera 12 chunks, aplica reranking, elimina duplicados y asegura evidencia para las subconsultas detectadas.
+El RAG básico recupera los tres documentos semánticamente más cercanos. El RAG avanzado recupera **8 chunks iniciales**, aplica reranking, elimina duplicados y selecciona los chunks finales más relevantes para construir la respuesta.
 
 | Métrica | RAG básico | RAG avanzado | Delta |
 |---|---:|---:|---:|
@@ -339,12 +341,22 @@ El RAG básico recupera los tres documentos semánticamente más cercanos. El RA
 | Context precision | 0.7333 | 0.6111 | -0.1222 |
 | Context recall | 0.8222 | 0.9444 | +0.1222 |
 
-El RAG avanzado mejoró Context Recall en 0.1222 puntos. Esto indica que recuperó evidencia para una mayor cantidad de partes de las consultas complejas, especialmente cuando combinaban reclamos, facturación, soporte y cambios de pedido.
+El RAG avanzado obtuvo una mejora de **0.1222** en Context Recall. Esto indica que recuperó evidencia para una mayor cantidad de partes de las consultas complejas, especialmente en preguntas que combinaban reclamos, facturación, soporte y cambios de pedido.
 
-Sin embargo, disminuyeron Faithfulness, Answer Relevancy y Context Precision. La causa principal es que el modelo local utilizado en el reranking y en la generación tendió a reformular información e introducir detalles no presentes de forma explícita en los chunks recuperados. Por lo tanto, la arquitectura avanzada mejoró la cobertura de contexto, pero necesita reforzar sus guardrails de generación para evitar inferencias no fundamentadas.
+En cambio, Faithfulness, Answer Relevancy y Context Precision tuvieron valores menores en el RAG avanzado. Estos resultados sugieren que una mayor cobertura de contexto no garantiza, por sí sola, una respuesta más precisa o completamente respaldada: también importa la forma en que el modelo sintetiza los chunks seleccionados.
+
+### Limitación de la comparación
+
+Esta comparación no permite atribuir la variación de las métricas únicamente a chunking y reranking. El RAG básico generó sus respuestas con Gemini, mientras que el RAG avanzado utilizó el modelo local `qwen2.5:3b` mediante Ollama. Por lo tanto, las diferencias observadas en Faithfulness y Answer Relevancy pueden deberse tanto a la arquitectura de recuperación como al cambio de modelo generador.
+
+Además, RAGAS fue evaluado con el mismo modelo local `qwen2.5:3b`. En el desglose por consulta se observó al menos un caso con Faithfulness igual a 0.0, aun cuando la respuesta parecía razonablemente relacionada con el contexto recuperado. Por este motivo, los valores deben interpretarse con cautela: un modelo local pequeño puede presentar errores de interpretación, problemas de formato o evaluaciones inestables.
+
+En una futura iteración, se debería mantener fijo el mismo modelo generador para ambos pipelines y utilizar un evaluador independiente, preferentemente un modelo de mayor capacidad o una revisión humana de una muestra de respuestas. De esta forma sería posible aislar el efecto real de chunking y reranking.
 
 ## C.4 — Diagnóstico y mejora futura
 
-La métrica más baja del RAG avanzado fue **Answer Relevancy**, con un valor de **0.4133**. Aunque el reranking mejoró la cobertura de contexto, el modelo local puede responder solo una parte de las consultas compuestas o agregar reformulaciones que no son necesarias para la pregunta.
+La métrica más baja del RAG avanzado fue **Answer Relevancy**, con un valor de **0.4133**. El resultado indica que, aunque el pipeline avanzado recuperó más evidencia relevante, el modelo generador no siempre construyó una respuesta que cubriera de forma directa y completa todas las partes de la pregunta.
 
-Como mejora futura, se propone descomponer cada consulta compleja en subconsultas (por ejemplo: reclamo, factura y envío), recuperar evidencia específica para cada una y generar una respuesta con una sección por subtema. Además, se incorporaría una validación final que descarte afirmaciones que no estén respaldadas explícitamente por los chunks seleccionados. Esto debería aumentar la relevancia de la respuesta y, al mismo tiempo, mejorar la fidelidad.
+Como mejora futura, se propone descomponer cada consulta compleja en subconsultas —por ejemplo, reclamo, factura y envío—, recuperar evidencia específica para cada una y generar una respuesta con una sección por subtema. Además, se incorporaría una validación final que descarte afirmaciones que no estén respaldadas explícitamente por los chunks seleccionados.
+
+Esta mejora debería aumentar la relevancia y la fidelidad de las respuestas. Sin embargo, para medir su impacto correctamente, la nueva evaluación debería utilizar el mismo modelo generador en ambos pipelines y un evaluador independiente.

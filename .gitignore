@@ -1,5 +1,25 @@
+# Secretos
 .env
+
+# Entornos virtuales locales
 .venv/
+.venv_ragas/
+
+# Cachés de Python
 __pycache__/
 *.py[cod]
-.venv_ragas
+.pytest_cache/
+
+# Bases e índices reconstruibles
+chroma_db/
+*.index
+documentos_indexados.json
+
+# Cachés locales de evaluación
+entrega_3/cache_respuestas_*.json
+
+# Resultados intermedios o incompletos
+entrega_3/resultados_ragas_*_gemini_parcial.json
+
+# Archivos del editor
+.vscode/
