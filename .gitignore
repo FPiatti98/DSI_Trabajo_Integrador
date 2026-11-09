@@ -23,3 +23,12 @@ entrega_3/resultados_ragas_*_gemini_parcial.json
 
 # Archivos del editor
 .vscode/
+
+# Datos persistentes locales de Entrega 4
+entrega_4/operaciones.db
+entrega_4/memoria_agente.sqlite
+
+langgraph==0.2.76
+langgraph-checkpoint-sqlite==2.0.6
+
+entrega_4/chroma_ollama/

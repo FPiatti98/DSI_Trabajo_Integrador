@@ -10,3 +10,4 @@ langsmith
 ragas
 datasets
 langchain-google-genai
+langchain-ollama==0.2.3
