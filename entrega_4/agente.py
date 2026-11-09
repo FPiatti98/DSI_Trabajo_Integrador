@@ -10,7 +10,10 @@ from langchain_ollama import ChatOllama
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.prebuilt import create_react_agent
 
-from herramientas import HERRAMIENTAS, inicializar_base_operaciones
+try:
+    from .herramientas import HERRAMIENTAS, inicializar_base_operaciones
+except ImportError:
+    from herramientas import HERRAMIENTAS, inicializar_base_operaciones
 
 CARPETA_ENTREGA_4 = Path(__file__).resolve().parent
 RUTA_MEMORIA = CARPETA_ENTREGA_4 / "memoria_agente.sqlite"
