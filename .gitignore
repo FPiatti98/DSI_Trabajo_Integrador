@@ -32,3 +32,7 @@ langgraph==0.2.76
 langgraph-checkpoint-sqlite==2.0.6
 
 entrega_4/chroma_ollama/
+
+# Observabilidad local
+entrega_4/observabilidad.sqlite
+entrega_4/logs/

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -11,9 +12,19 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.prebuilt import create_react_agent
 
 try:
-    from .herramientas import HERRAMIENTAS, inicializar_base_operaciones
+    from .herramientas import (
+        HERRAMIENTAS,
+        buscar_conocimiento,
+        consultar_estado_pedido,
+        inicializar_base_operaciones,
+    )
 except ImportError:
-    from herramientas import HERRAMIENTAS, inicializar_base_operaciones
+    from herramientas import (
+        HERRAMIENTAS,
+        buscar_conocimiento,
+        consultar_estado_pedido,
+        inicializar_base_operaciones,
+    )
 
 CARPETA_ENTREGA_4 = Path(__file__).resolve().parent
 RUTA_MEMORIA = CARPETA_ENTREGA_4 / "memoria_agente.sqlite"
@@ -40,27 +51,12 @@ Regla obligatoria de uso de herramientas:
 - Solo podés responder sin herramientas a saludos o mensajes que no sean una
   consulta sobre TecnoSupply.
 
-Reglas para decidir qué herramienta usar:
-- Para políticas, soporte, facturación, garantías, envíos, pagos, stock o
-  reclamos generales, usá buscar_conocimiento.
-- Para conocer el estado real de un pedido, usá consultar_estado_pedido.
-- Para registrar un reclamo, usá registrar_reclamo solo si el usuario expresa
-  claramente que desea iniciarlo y brinda número de pedido y descripción.
-- Registrar un reclamo no autoriza devoluciones, reemplazos ni reintegros.
-- La conversación se conserva dentro del mismo thread_id. Si el usuario pide
-  recordar un dato, confirmá que lo usarás en los próximos turnos de esa
-  conversación. No afirmes que no podés recordar información.
-
 Reglas estrictas de fundamentación:
 - La salida de una herramienta es la única fuente de verdad.
 - Cuando usar buscar_conocimiento, respondé únicamente con información
   explícita en el campo contenido de los documentos recuperados.
 - No agregues pasos, componentes, plazos, promesas o requisitos que no estén
   escritos en la herramienta.
-- Para una notebook que no enciende, si el documento menciona cargador,
-  conexión eléctrica e indicadores luminosos, limitate exactamente a esos
-  controles. No menciones botón de encendido, batería, sistema operativo ni
-  otras verificaciones si no aparecen en la evidencia.
 - No prometas acciones futuras, por ejemplo "te mantendré informado".
 - Si falta información necesaria, pedila al usuario.
 - Si la información no está disponible, respondé que no contás con datos
@@ -70,12 +66,7 @@ Reglas estrictas de fundamentación:
 
 
 def crear_modelo() -> ChatOllama:
-    """
-    Crea el modelo local de Ollama para razonar y decidir qué herramienta usar.
-
-    Returns:
-        Instancia local de ChatOllama con el modelo qwen3:4b-instruct.
-    """
+    """Crea el modelo local Ollama para el grafo ReAct."""
     return ChatOllama(
         model=MODELO_OLLAMA,
         base_url=URL_OLLAMA,
@@ -84,30 +75,13 @@ def crear_modelo() -> ChatOllama:
 
 
 def crear_checkpointer() -> SqliteSaver:
-    """
-    Crea un checkpointer SQLite persistente para la memoria conversacional.
-
-    Cada conversación se diferencia mediante thread_id. Por eso, el agente puede
-    recuperar mensajes anteriores incluso luego de reiniciar el proceso.
-
-    Returns:
-        Checkpointer SQLite conectado a memoria_agente.sqlite.
-    """
+    """Crea el almacenamiento SQLite persistente de memoria conversacional."""
     conexion = sqlite3.connect(RUTA_MEMORIA, check_same_thread=False)
     return SqliteSaver(conexion)
 
 
 def crear_agente():
-    """
-    Construye el grafo ReAct de LangGraph.
-
-    El agente alterna entre el modelo y las herramientas hasta generar una
-    respuesta final. El límite de pasos se configura al invocarlo mediante
-    recursion_limit.
-
-    Returns:
-        Grafo ReAct compilado con herramientas y memoria SQLite persistente.
-    """
+    """Construye el grafo ReAct con herramientas y memoria SQLite."""
     inicializar_base_operaciones()
 
     return create_react_agent(
@@ -140,15 +114,47 @@ def convertir_contenido_a_texto(contenido: Any) -> str:
     return str(contenido)
 
 
+def ejecutar_fallback_lectura(consulta: str) -> ToolMessage:
+    """
+    Ejecuta una herramienta de solo lectura si el modelo no llamó ninguna.
+
+    Este fallback evita respuestas no fundamentadas de modelos locales pequeños.
+    Nunca ejecuta el actuador registrar_reclamo, ya que una acción con efectos
+    persistentes requiere una decisión explícita del agente.
+    """
+    coincidencia_pedido = re.search(r"\bPED-\d+\b", consulta.upper())
+
+    if coincidencia_pedido:
+        numero_pedido = coincidencia_pedido.group(0)
+
+        contenido = consultar_estado_pedido.invoke(
+            {"numero_pedido": numero_pedido}
+        )
+
+        return ToolMessage(
+            content=contenido,
+            name="consultar_estado_pedido",
+            tool_call_id="fallback_lectura",
+        )
+
+    contenido = buscar_conocimiento.invoke({"consulta": consulta})
+
+    return ToolMessage(
+        content=contenido,
+        name="buscar_conocimiento",
+        tool_call_id="fallback_lectura",
+    )
+
+
 def construir_respuesta_fundamentada(
     mensajes_nuevos: list[BaseMessage],
     respuesta_modelo: str,
 ) -> str:
     """
-    Construye una respuesta segura a partir de la última herramienta usada.
+    Construye una respuesta segura desde la última salida de herramienta.
 
     Evita que el modelo agregue instrucciones, políticas o promesas que no
-    figuren en la salida de la herramienta.
+    figuren en la salida estructurada.
     """
     for mensaje in reversed(mensajes_nuevos):
         if not isinstance(mensaje, ToolMessage):
@@ -191,19 +197,18 @@ def construir_respuesta_fundamentada(
     return respuesta_modelo
 
 
-def consultar_agente(consulta: str, thread_id: str) -> str:
+def consultar_agente_detallado(
+    consulta: str,
+    thread_id: str,
+) -> dict[str, Any]:
     """
-    Ejecuta una consulta en el agente usando memoria asociada al thread_id.
+    Ejecuta una consulta y devuelve respuesta más herramientas utilizadas.
 
-    Args:
-        consulta: Mensaje actual del usuario.
-        thread_id: Identificador estable de la conversación.
+    Si el modelo no usa ninguna herramienta de lectura, aplica un fallback
+    seguro para evitar respuestas sin evidencia.
 
     Returns:
-        Respuesta final validada y fundamentada en herramientas.
-
-    Raises:
-        ValueError: Si la consulta o el thread_id están vacíos.
+        Diccionario con respuesta fundamentada y herramientas ejecutadas.
     """
     consulta = consulta.strip()
     thread_id = thread_id.strip()
@@ -238,24 +243,46 @@ def consultar_agente(consulta: str, thread_id: str) -> str:
 
     respuesta_modelo = convertir_contenido_a_texto(respuesta_final.content)
 
-    return construir_respuesta_fundamentada(
+    herramientas_usadas = [
+        mensaje.name
+        for mensaje in mensajes_nuevos
+        if isinstance(mensaje, ToolMessage)
+    ]
+
+    # Qwen3 puede omitir una herramienta en ciertas consultas. Se habilita
+    # únicamente un fallback de lectura, nunca una acción persistente.
+    if not herramientas_usadas:
+        mensaje_fallback = ejecutar_fallback_lectura(consulta)
+        mensajes_nuevos.append(mensaje_fallback)
+        herramientas_usadas = [mensaje_fallback.name]
+
+    respuesta = construir_respuesta_fundamentada(
         mensajes_nuevos,
         respuesta_modelo,
     )
 
+    return {
+        "respuesta": respuesta,
+        "herramientas": herramientas_usadas,
+    }
+
+
+def consultar_agente(consulta: str, thread_id: str) -> str:
+    """Ejecuta una consulta y devuelve únicamente la respuesta final."""
+    resultado = consultar_agente_detallado(
+        consulta=consulta,
+        thread_id=thread_id,
+    )
+
+    return str(resultado["respuesta"])
+
 
 def obtener_historial(thread_id: str) -> list[dict[str, str]]:
     """
-    Recupera el historial persistido de una conversación.
+    Recupera el historial visible persistido de una conversación.
 
-    Las respuestas que siguieron al uso de herramientas se reconstruyen desde
-    esas herramientas para no exponer reformulaciones no fundamentadas del LLM.
-
-    Args:
-        thread_id: Identificador de la conversación a consultar.
-
-    Returns:
-        Lista de mensajes visibles del usuario y del asistente.
+    Las respuestas posteriores a herramientas se reconstruyen desde la salida
+    estructurada para no exponer reformulaciones no fundamentadas del modelo.
     """
     thread_id = thread_id.strip()
 
@@ -295,7 +322,6 @@ def obtener_historial(thread_id: str) -> list[dict[str, str]]:
                 mensaje.content
             ).strip()
 
-            # Mensaje intermedio que solo solicita una herramienta.
             if not contenido_modelo and not herramientas_turno:
                 continue
 
@@ -318,7 +344,7 @@ def obtener_historial(thread_id: str) -> list[dict[str, str]]:
 
 
 if __name__ == "__main__":
-    THREAD_DEMO = "demo-ollama-memoria-002"
+    THREAD_DEMO = "demo-ollama-memoria-004"
 
     print("=== Prueba de agente local con Ollama y memoria SQLite ===\n")
 
