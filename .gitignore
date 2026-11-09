@@ -10,29 +10,21 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
-# Bases e índices reconstruibles
+# Archivos del editor
+.vscode/
+
+# Bases e índices reconstruibles de Entregas 2 y 3
 chroma_db/
 *.index
 documentos_indexados.json
 
-# Cachés locales de evaluación
+# Cachés y resultados parciales de evaluación
 entrega_3/cache_respuestas_*.json
-
-# Resultados intermedios o incompletos
 entrega_3/resultados_ragas_*_gemini_parcial.json
 
-# Archivos del editor
-.vscode/
-
-# Datos persistentes locales de Entrega 4
+# Datos persistentes, bases vectoriales y logs locales de Entrega 4
 entrega_4/operaciones.db
 entrega_4/memoria_agente.sqlite
-
-langgraph==0.2.76
-langgraph-checkpoint-sqlite==2.0.6
-
-entrega_4/chroma_ollama/
-
-# Observabilidad local
 entrega_4/observabilidad.sqlite
+entrega_4/chroma_ollama/
 entrega_4/logs/

@@ -11,10 +11,15 @@ from pydantic import BaseModel, Field
 CARPETA_ENTREGA_4 = Path(__file__).resolve().parent
 RAIZ_PROYECTO = CARPETA_ENTREGA_4.parent
 
+# Carga configuración antes de importar el agente para que LangSmith
+# pueda registrar las trazas desde el inicio.
 load_dotenv(RAIZ_PROYECTO / ".env", override=True)
 
 os.environ["LANGSMITH_TRACING"] = "true"
 os.environ["LANGSMITH_PROJECT"] = "tecnosupply-agente-entrega4"
+os.environ["LANGCHAIN_TRACING_V2"] = "true"
+os.environ["LANGCHAIN_PROJECT"] = "tecnosupply-agente-entrega4"
+
 if os.getenv("LANGSMITH_API_KEY"):
     os.environ["LANGCHAIN_API_KEY"] = os.environ["LANGSMITH_API_KEY"]
 
@@ -31,6 +36,11 @@ try:
         registrar_consulta,
         registrar_log_json,
     )
+    from .seguridad import (
+        ErrorSeguridad,
+        enmascarar_datos_personales,
+        validar_entrada,
+    )
 except ImportError:
     from agente import (
         MODELO_OLLAMA,
@@ -44,6 +54,11 @@ except ImportError:
         registrar_consulta,
         registrar_log_json,
     )
+    from seguridad import (
+        ErrorSeguridad,
+        enmascarar_datos_personales,
+        validar_entrada,
+    )
 
 RUTA_BD_OPERACIONES = CARPETA_ENTREGA_4 / "operaciones.db"
 RUTA_CHROMA_OLLAMA = CARPETA_ENTREGA_4 / "chroma_ollama"
@@ -51,8 +66,8 @@ RUTA_CHROMA_OLLAMA = CARPETA_ENTREGA_4 / "chroma_ollama"
 app = FastAPI(
     title="API del Agente TecnoSupply",
     description=(
-        "API REST para consultar un agente ReAct con herramientas, "
-        "memoria SQLite, recuperación RAG local y observabilidad."
+        "API REST para consultar un agente ReAct con herramientas, memoria "
+        "SQLite, recuperación RAG local, observabilidad y guardrails."
     ),
     version="1.0.0",
 )
@@ -64,7 +79,6 @@ class ConsultaRequest(BaseModel):
     consulta: str = Field(
         ...,
         min_length=1,
-        max_length=2000,
         description="Consulta del usuario en lenguaje natural.",
     )
     thread_id: str = Field(
@@ -92,8 +106,8 @@ class EstadoResponse(BaseModel):
 
 
 @app.on_event("startup")
-def iniciar_observabilidad() -> None:
-    """Inicializa los recursos de observabilidad al arrancar la API."""
+def iniciar_api() -> None:
+    """Inicializa observabilidad al iniciar la API."""
     inicializar_observabilidad()
 
     registrar_log_json(
@@ -112,18 +126,28 @@ def health() -> dict[str, str | bool]:
         "memoria_sqlite": RUTA_MEMORIA.exists(),
         "base_operaciones": RUTA_BD_OPERACIONES.exists(),
         "chroma_local": RUTA_CHROMA_OLLAMA.exists(),
+        "seguridad_activa": True,
     }
 
 
 @app.post("/consultar", response_model=ConsultaResponse)
 def consultar(datos: ConsultaRequest) -> ConsultaResponse:
-    """Envía una consulta al agente y registra métricas de la ejecución."""
+    """
+    Valida la entrada, ejecuta el agente, protege la salida y registra
+    métricas de observabilidad.
+    """
     inicio = perf_counter()
 
     try:
+        consulta_validada = validar_entrada(datos.consulta)
+
         resultado = consultar_agente_detallado(
-            consulta=datos.consulta,
+            consulta=consulta_validada,
             thread_id=datos.thread_id,
+        )
+
+        respuesta_segura = enmascarar_datos_personales(
+            str(resultado["respuesta"])
         )
 
         latencia_ms = (perf_counter() - inicio) * 1000
@@ -131,17 +155,34 @@ def consultar(datos: ConsultaRequest) -> ConsultaResponse:
 
         registrar_consulta(
             thread_id=datos.thread_id,
-            consulta=datos.consulta,
+            consulta=consulta_validada,
             latencia_ms=latencia_ms,
             estado="ok",
             herramientas=herramientas,
+            bloqueado=False,
+            detalle_error=None,
         )
 
         return ConsultaResponse(
             thread_id=datos.thread_id,
-            respuesta=str(resultado["respuesta"]),
+            respuesta=respuesta_segura,
             herramientas_usadas=herramientas,
         )
+
+    except ErrorSeguridad as error:
+        latencia_ms = (perf_counter() - inicio) * 1000
+
+        registrar_consulta(
+            thread_id=datos.thread_id,
+            consulta=datos.consulta,
+            latencia_ms=latencia_ms,
+            estado="bloqueado",
+            herramientas=[],
+            bloqueado=True,
+            detalle_error=str(error),
+        )
+
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
     except ValueError as error:
         latencia_ms = (perf_counter() - inicio) * 1000
@@ -151,6 +192,8 @@ def consultar(datos: ConsultaRequest) -> ConsultaResponse:
             consulta=datos.consulta,
             latencia_ms=latencia_ms,
             estado="error",
+            herramientas=[],
+            bloqueado=False,
             detalle_error=str(error),
         )
 
@@ -164,6 +207,8 @@ def consultar(datos: ConsultaRequest) -> ConsultaResponse:
             consulta=datos.consulta,
             latencia_ms=latencia_ms,
             estado="error",
+            herramientas=[],
+            bloqueado=False,
             detalle_error=type(error).__name__,
         )
 
@@ -175,11 +220,23 @@ def consultar(datos: ConsultaRequest) -> ConsultaResponse:
 
 @app.get("/estado/{thread_id}", response_model=EstadoResponse)
 def estado(thread_id: str) -> EstadoResponse:
-    """Devuelve el historial visible asociado a un thread_id."""
+    """Devuelve el historial protegido asociado a un thread_id."""
     try:
-        historial = obtener_historial(thread_id)
+        historial_original = obtener_historial(thread_id)
+
+        historial_seguro = [
+            {
+                "rol": mensaje["rol"],
+                "contenido": enmascarar_datos_personales(
+                    mensaje["contenido"]
+                ),
+            }
+            for mensaje in historial_original
+        ]
+
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -188,15 +245,12 @@ def estado(thread_id: str) -> EstadoResponse:
 
     return EstadoResponse(
         thread_id=thread_id,
-        cantidad_mensajes=len(historial),
-        historial=historial,
+        cantidad_mensajes=len(historial_seguro),
+        historial=historial_seguro,
     )
 
 
 @app.get("/metricas")
 def metricas() -> dict:
-    """
-    Devuelve consultas, errores, bloqueos, latencia promedio, p95 y frecuencia
-    de uso de herramientas.
-    """
+    """Devuelve métricas acumuladas de consultas, errores y bloqueos."""
     return obtener_metricas()
