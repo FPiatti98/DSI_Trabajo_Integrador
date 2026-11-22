@@ -28,3 +28,11 @@ entrega_4/memoria_agente.sqlite
 entrega_4/observabilidad.sqlite
 entrega_4/chroma_ollama/
 entrega_4/logs/
+
+# Archivos auxiliares de SQLite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.db-wal
+*.db-shm
+*.db-journal
