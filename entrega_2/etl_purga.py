@@ -209,7 +209,7 @@ def guardar_log(colisiones, purga, cantidad_inicial, cantidad_final):
 
 
 def main():
-    load_dotenv(CARPETA_RAIZ / ".env")
+    load_dotenv(CARPETA_RAIZ.parent / ".env")
 
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:

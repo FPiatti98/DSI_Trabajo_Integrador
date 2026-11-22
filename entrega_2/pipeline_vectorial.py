@@ -10,7 +10,7 @@ from google import genai
 from google.genai import types
 
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 BASE_PATH = BASE_DIR / "base_conocimiento.json"
 INDEX_PATH = BASE_DIR / "indice_faiss.index"
 MANIFEST_PATH = BASE_DIR / "documentos_indexados.json"

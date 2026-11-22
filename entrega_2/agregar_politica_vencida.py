@@ -7,7 +7,7 @@ from google import genai
 from google.genai import types
 
 
-CARPETA_RAIZ = Path(__file__).resolve().parent
+CARPETA_RAIZ = Path(__file__).resolve().parent.parent
 RUTA_CHROMA = CARPETA_RAIZ / "chroma_db"
 NOMBRE_COLECCION = "conocimiento_tecnosupply"
 

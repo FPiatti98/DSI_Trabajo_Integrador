@@ -13,11 +13,23 @@ La solución incorpora un agente ReAct con LangGraph, herramientas de consulta y
 
 ## A.1 Arquitectura general
 
+La implementación vigente se organiza por responsabilidades en el paquete `tecnosupply/`:
+
+| Capa o componente | Responsabilidad |
+|---|---|
+| `presentacion/` | Endpoints de FastAPI, contratos Pydantic y traducción de errores a respuestas HTTP. |
+| `aplicacion/` | Casos de uso, agente, herramientas, guardrails, resolución de referencias y coordinación de observabilidad. |
+| `dominio/` | Validaciones de negocio para solicitudes de reclamo y errores del dominio, sin dependencias de FastAPI, LangGraph ni SQLite. |
+| `infraestructura/` | Repositorios SQLite, adaptadores de Ollama y ChromaDB, indexación, checkpoints, logs y métricas. |
+| `config.py` y `main.py` | Configuración central y punto de entrada que conecta los componentes de la API. |
+
+Los endpoints delegan la coordinación a los servicios de aplicación. Estos utilizan las reglas del dominio y los adaptadores de infraestructura. Los comandos auxiliares están en `scripts/` y las pruebas automáticas en `tests/`.
+
 El agente se implementó con el patrón ReAct mediante LangGraph. Recibe una consulta del usuario, decide qué herramienta utilizar, obtiene evidencia o datos operativos y genera una respuesta fundamentada.
 
 El modelo generador utilizado es `qwen3:4b-instruct` mediante Ollama. La recuperación semántica utiliza embeddings locales del modelo `nomic-embed-text` y una colección persistente de ChromaDB.
 
-La ejecución del grafo tiene un límite de 8 iteraciones para evitar ciclos o ejecuciones indefinidas.
+La ejecución se configura con `recursion_limit=8` para limitar los pasos del grafo y evitar ciclos indefinidos. Este límite no equivale necesariamente a ocho llamadas al modelo, porque el grafo también ejecuta nodos de herramientas.
 
 ```text
 Usuario
@@ -50,6 +62,8 @@ La memoria se implementó con `SqliteSaver` de LangGraph. Cada conversación se 
 
 El archivo local `memoria_agente.sqlite` almacena los checkpoints de la conversación. Este archivo no se versiona, ya que se genera localmente.
 
+Para preguntas de producto o estado que mencionan “ese pedido”, `aplicacion/contexto_conversacion.py` puede completar el identificador a partir de la última mención inequívoca del usuario en el mismo hilo. La consulta aclarada se utiliza tanto para el modelo como para el fallback de lectura; el historial visible conserva la pregunta original. Si la mención contiene varios pedidos, no se selecciona uno automáticamente. Esta resolución no completa solicitudes de acciones.
+
 ## A.4 Matriz de validación
 
 | Escenario | Objetivo | Resultado observado |
@@ -59,7 +73,7 @@ El archivo local `memoria_agente.sqlite` almacena los checkpoints de la conversa
 | 3. Actuador de reclamos | Registrar un reclamo explícito para `PED-1004`. | El sistema creó el reclamo, devolvió su número, estado `abierto` y aclaró que no implica aprobación automática. |
 | 4. Memoria por `thread_id` | Recordar el pedido mencionado en un turno anterior. | Luego de consultar `PED-1003`, el agente respondió correctamente cuál era el producto del pedido: Mouse Logitech MX Master. |
 
-La matriz fue ejecutada mediante `prueba_agente.py`. Los cuatro escenarios finalizaron correctamente.
+La validación funcional se realizó con `python -m scripts.prueba_agente` y una prueba aislada de los dos turnos de memoria. Se verificaron los escenarios de conocimiento, consulta operativa y registro de reclamo. En la comprobación de memoria posterior al ajuste de referencias, ambos turnos utilizaron `consultar_estado_pedido` y devolvieron el producto Mouse Logitech MX Master de `PED-1003`.
 
 ---
 
@@ -69,7 +83,7 @@ La matriz fue ejecutada mediante `prueba_agente.py`. Los cuatro escenarios final
 
 | Método | Endpoint | Descripción |
 |---|---|---|
-| `GET` | `/health` | Comprueba disponibilidad del modelo, memoria SQLite, base operativa, ChromaDB y seguridad. |
+| `GET` | `/health` | Devuelve el modelo configurado y comprueba la existencia de las rutas de memoria, base operativa y ChromaDB; informa que los guardrails están integrados. |
 | `POST` | `/consultar` | Procesa una consulta mediante el agente. |
 | `GET` | `/estado/{thread_id}` | Devuelve el historial persistente de una conversación. |
 | `GET` | `/metricas` | Devuelve métricas operativas acumuladas. |
@@ -158,7 +172,7 @@ El endpoint `GET /metricas` devolvió el siguiente estado acumulado:
 | Uso de `registrar_reclamo` | 1 |
 | Uso de `buscar_conocimiento` | 1 |
 
-Las métricas son persistentes y acumulativas. Por este motivo, los errores registrados incluyen pruebas de desarrollo previas a la corrección final de los guardrails y de la API. La ejecución final de la suite automática de seguridad concluyó correctamente con cinco pruebas aprobadas.
+La tabla conserva una captura de la validación original; no representa el contador actual luego de la reorganización. Las métricas son persistentes y acumulativas, y los errores registrados incluyen pruebas de desarrollo previas a las correcciones de guardrails y API. La suite actual de la arquitectura por capas aprobó 27 pruebas, de las cuales 10 corresponden a seguridad y comportamiento HTTP.
 
 La latencia observada se explica principalmente por la inferencia local de `qwen3:4b-instruct` mediante Ollama. El valor p95 es mayor que el promedio porque representa una de las consultas más lentas del conjunto acumulado.
 
@@ -227,21 +241,33 @@ Teléfono: 11 5555-1234 → TELÉFONO: [TELÉFONO_OCULTO]
 
 ## D.3 Suite automática de pruebas
 
-La suite `security_tests.py` ejecutó cinco pruebas automáticas y finalizó correctamente:
+La suite vigente se ejecuta desde la raíz del repositorio:
+
+```powershell
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+Después de retirar los módulos duplicados de `entrega_4/`, la ejecución observada finalizó con:
 
 ```text
-Ran 5 tests in 0.056s
+Ran 27 tests in 0.959s
 
 OK
 ```
 
-| Prueba | Resultado |
-|---|---|
-| Bloqueo de prompt injection | Aprobada |
-| Bloqueo por longitud excesiva | Aprobada |
-| Enmascarado de datos personales | Aprobada |
-| Bloqueo desde `POST /consultar` antes de invocar el agente | Aprobada |
-| Enmascarado de la salida desde la API | Aprobada |
+| Archivo | Cantidad | Cobertura |
+|---|---:|---|
+| `tests/test_memoria.py` | 8 | Resolución de referencias, contexto del hilo, identificación explícita, ambigüedad, fallback y conservación de la consulta original. |
+| `tests/test_operaciones.py` | 9 | Consulta y normalización de pedidos, validación y persistencia de reclamos, integridad referencial y reinicialización sin duplicados. |
+| `tests/test_seguridad.py` | 10 | Validadores, enmascarado, contratos HTTP, rechazo antes de llamar al agente, historial protegido, errores y registro de métricas. |
+
+Los casos de persistencia utilizan bases temporales para verificar inserciones confirmadas y rechazos sin alterar los reclamos habituales. Las llamadas al modelo se sustituyen por dobles de prueba. La validación funcional con Ollama real complementa estas comprobaciones automáticas.
+
+El archivo solicitado por la consigna se conserva como comando en `scripts/security_tests.py`. Ejecuta las 10 pruebas de seguridad, sin duplicar su implementación:
+
+```powershell
+python -m scripts.security_tests
+```
 
 ---
 

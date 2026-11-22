@@ -66,6 +66,7 @@ DSI_Proyecto_Final/
 │   ├── test_memoria.py
 │   ├── test_operaciones.py
 │   └── test_seguridad.py
+├── entrega_1/
 ├── entrega_2/
 ├── entrega_3/
 ├── entrega_4/
@@ -302,6 +303,8 @@ Las bases, índices, logs, entornos virtuales y `.env` están excluidos mediante
 
 ## Documentación del trabajo
 
+- [Primera entrega: clasificador de emails](entrega_1/informe.md).
+- [Guía del material de la Entrega 2](entrega_2/README.md).
 - [Informe de la entrega final](entrega_4/informe.md).
 - [Ficha técnica](entrega_4/ficha_tecnica.md).
 - [Matriz de validación](entrega_4/matriz_validacion.md).

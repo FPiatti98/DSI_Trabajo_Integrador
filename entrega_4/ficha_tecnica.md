@@ -6,7 +6,7 @@
 |---|---|
 | Sistema | Agente Inteligente TecnoSupply |
 | Dominio | Atención al cliente para comercio tecnológico |
-| Arquitectura | Agente ReAct con LangGraph, RAG local, memoria SQLite y API REST |
+| Arquitectura | Organización por capas con agente ReAct de LangGraph, RAG local, memoria SQLite y API REST |
 | Modelo generador | `qwen3:4b-instruct` mediante Ollama |
 | Modelo de embeddings | `nomic-embed-text` mediante Ollama |
 | Base vectorial | ChromaDB persistente |
@@ -22,6 +22,19 @@ El sistema asiste consultas de clientes de TecnoSupply Argentina. Puede recupera
 El agente no confirma operaciones que requieran validación humana, como devoluciones, reemplazos, reintegros o cambios administrativos definitivos.
 
 ## 3. Arquitectura
+
+El código vigente está en `tecnosupply/` y se divide en:
+
+| Componente | Función |
+|---|---|
+| `presentacion/` | Endpoints HTTP, esquemas Pydantic y respuestas de error. |
+| `aplicacion/` | Servicios, agente, herramientas, guardrails y referencias conversacionales. |
+| `dominio/` | Reglas de negocio y errores de validación de reclamos. |
+| `infraestructura/` | Ollama, ChromaDB, SQLite, checkpoints y observabilidad. |
+| `config.py` | Rutas y parámetros compartidos. |
+| `main.py` | Composición y arranque de la API. |
+
+Los comandos se agrupan en `scripts/`, las pruebas automáticas en `tests/` y el material académico en `entrega_1/` a `entrega_4/`.
 
 ```text
 Cliente HTTP
@@ -58,7 +71,7 @@ Las herramientas incluyen docstrings con propósito, parámetros, salida y restr
 
 La memoria conversacional se implementa mediante `SqliteSaver` de LangGraph y se asocia a cada conversación a través de `thread_id`.
 
-Esto permite que el agente recuerde información mencionada en turnos previos, incluso después de reiniciar la API. Por ejemplo, luego de consultar el estado de `PED-1003`, el usuario puede preguntar “¿Cuál era el producto de ese pedido?” y el agente conserva el contexto.
+Esto permite recuperar el contexto persistido de un hilo, incluso después de reiniciar la API. Para seguimientos de producto o estado como “¿Cuál era el producto de ese pedido?”, la aplicación completa la referencia con la última mención inequívoca del usuario en ese hilo. La pregunta original se conserva en el historial visible. No se elige automáticamente entre varios pedidos ni se completan solicitudes de acciones.
 
 Archivos persistentes principales:
 
@@ -70,13 +83,13 @@ Archivos persistentes principales:
 | `observabilidad.sqlite` | Métricas históricas de la API. |
 | `logs/agente.jsonl` | Eventos estructurados en formato JSON Lines. |
 
-Estos artefactos se excluyen del repositorio mediante `.gitignore`, ya que se reconstruyen o generan localmente.
+Estos artefactos permanecen localmente bajo `entrega_4/`, con rutas centralizadas en `tecnosupply/config.py`, y se excluyen del repositorio mediante `.gitignore`. La colección vectorial puede regenerarse; los reclamos y el historial requieren respaldo si se desea conservarlos.
 
 ## 6. API REST
 
 | Método | Endpoint | Descripción |
 |---|---|---|
-| `GET` | `/health` | Verifica disponibilidad del modelo, memoria, base operativa, ChromaDB y seguridad. |
+| `GET` | `/health` | Informa el modelo configurado y la existencia de las rutas locales principales. No ejecuta una inferencia de prueba. |
 | `POST` | `/consultar` | Procesa una consulta del usuario mediante el agente. |
 | `GET` | `/estado/{thread_id}` | Recupera el historial persistente de una conversación. |
 | `GET` | `/metricas` | Devuelve consultas, errores, bloqueos, latencia promedio, p95 y frecuencia de herramientas. |
@@ -118,12 +131,14 @@ Se implementaron tres controles integrados en la API:
 | Detección de prompt injection | Entrada | Bloquea intentos de ignorar reglas, revelar prompts, jailbreak, bypass y patrones similares. |
 | Enmascarado de PII | Salida | Oculta emails, DNI, CUIT y teléfonos etiquetados antes de devolver una respuesta. |
 
-La suite `security_tests.py` valida automáticamente estos controles. La ejecución final aprobó cinco pruebas.
+El comando `python -m scripts.security_tests` ejecuta las 10 pruebas de `tests/test_seguridad.py`. La suite completa de la arquitectura por capas aprobó 27 pruebas: 10 de seguridad y HTTP, 9 de operaciones y 8 de memoria y referencias. Las llamadas al modelo se sustituyen por dobles de prueba; las escrituras de las pruebas usan bases y logs temporales.
 
 ## 9. Limitaciones conocidas
 
 - El modelo local `qwen3:4b-instruct` puede presentar variabilidad en la redacción o en la elección inicial de una herramienta.
-- Se incorporó una protección para consultas de lectura: si el modelo no invoca una herramienta de lectura necesaria, el sistema recupera evidencia de forma controlada. El actuador `registrar_reclamo` nunca se ejecuta automáticamente mediante esta protección.
+- Si el modelo no ejecuta ninguna herramienta, se aplica un fallback de lectura para consultar un pedido identificado o buscar conocimiento. El actuador `registrar_reclamo` nunca se ejecuta mediante este fallback.
+- La resolución explícita de referencias conversacionales cubre seguimientos de producto o estado sobre un pedido inequívoco; no resuelve todas las formas posibles de referencia.
+- El límite `recursion_limit=8` acota pasos del grafo y no equivale a ocho llamadas al modelo.
 - La base de operaciones utilizada es una simulación local para fines académicos.
 - El sistema no reemplaza validaciones comerciales, administrativas ni humanas requeridas por TecnoSupply.
 
@@ -135,3 +150,14 @@ La suite `security_tests.py` valida automáticamente estos controles. La ejecuci
 - Agregar métricas de calidad de respuesta y evaluación humana.
 - Ampliar los detectores de prompt injection y datos personales.
 - Contenerizar el sistema para facilitar el despliegue reproducible.
+
+## 11. Ejecución
+
+Desde la raíz del repositorio, con el entorno virtual activado y Ollama disponible:
+
+```powershell
+python -m scripts.reindexar_ollama
+python -m uvicorn tecnosupply.main:app --port 8000
+```
+
+La reindexación se requiere para preparar la colección o actualizarla cuando cambia la fuente. Las instrucciones completas de instalación, uso HTTP y validación están en el [README principal](../README.md).
