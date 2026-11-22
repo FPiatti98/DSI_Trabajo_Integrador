@@ -1,249 +1,313 @@
 # Agente Inteligente TecnoSupply
 
-Proyecto final integrador de IADS 3. Convierte el RAG desarrollado previamente en un agente con LangGraph, herramientas de dominio, memoria persistente, API REST, observabilidad y controles de seguridad.
+Proyecto final integrador de IADS 3. Integra un agente ReAct con LangGraph, recuperación de conocimiento, herramientas de dominio, memoria SQLite, una API REST, observabilidad y guardrails. Los modelos de generación y embeddings se ejecutan localmente mediante Ollama.
 
-## Funcionalidades
+## Arquitectura por capas
 
-- Agente ReAct implementado con LangGraph.
-- Recuperación semántica sobre una base de conocimiento en ChromaDB.
-- Consulta de estado operativo de pedidos.
-- Registro persistente de reclamos de postventa.
-- Memoria conversacional SQLite por `thread_id`.
-- API REST con FastAPI.
-- Logs JSON y métricas de operación.
-- Trazas mediante LangSmith.
-- Validadores contra prompt injection y consultas excesivamente largas.
-- Enmascarado de datos personales en las respuestas.
-- Pruebas automáticas de seguridad.
+La implementación vigente está en `tecnosupply/`. Cada capa agrupa una responsabilidad:
+
+| Ubicación | Responsabilidad |
+|---|---|
+| `tecnosupply/presentacion/` | Endpoints de FastAPI, contratos de entrada y salida con Pydantic y traducción de errores a HTTP. |
+| `tecnosupply/aplicacion/` | Casos de uso, agente y herramientas, resolución de referencias conversacionales, guardrails y coordinación del registro de consultas. |
+| `tecnosupply/dominio/` | Reglas de negocio y errores para validar solicitudes de reclamo. No depende de FastAPI, LangGraph ni SQLite. |
+| `tecnosupply/infraestructura/` | Acceso a SQLite, búsqueda e indexación en ChromaDB, conexión con Ollama, checkpoints, logs y métricas. |
+| `tecnosupply/config.py` | Rutas, modelos y parámetros compartidos. |
+| `tecnosupply/main.py` | Punto de entrada: carga el entorno, configura las trazas, crea FastAPI y conecta las rutas. |
+| `scripts/` | Comandos de reindexación y validación manual del agente. |
+| `tests/` | Pruebas automáticas de memoria, operaciones y seguridad. |
+
+Los endpoints llaman a servicios de aplicación. Estos aplican las reglas del dominio y utilizan los adaptadores de infraestructura para consultar o persistir datos.
+
+```text
+Cliente HTTP
+    ↓
+Presentación: FastAPI + Pydantic
+    ↓
+Aplicación: validación → agente y herramientas → protección de salida
+    ├── Dominio: reglas de reclamos
+    └── Infraestructura: Ollama, ChromaDB, SQLite y observabilidad
+```
 
 ## Estructura principal
 
 ```text
 DSI_Proyecto_Final/
+├── tecnosupply/
+│   ├── main.py
+│   ├── config.py
+│   ├── presentacion/
+│   │   ├── api.py
+│   │   └── schemas.py
+│   ├── aplicacion/
+│   │   ├── agente.py
+│   │   ├── contexto_conversacion.py
+│   │   ├── herramientas.py
+│   │   ├── seguridad.py
+│   │   ├── servicio_conocimiento.py
+│   │   ├── servicio_consultas.py
+│   │   └── servicio_operaciones.py
+│   ├── dominio/
+│   │   └── reglas_reclamos.py
+│   └── infraestructura/
+│       ├── base_operaciones.py
+│       ├── conocimiento_chroma.py
+│       ├── indexacion_chroma.py
+│       ├── memoria_sqlite.py
+│       ├── observabilidad.py
+│       ├── ollama.py
+│       ├── pedidos_sqlite.py
+│       └── reclamos_sqlite.py
+├── scripts/
+│   ├── prueba_agente.py
+│   ├── reindexar_ollama.py
+│   └── security_tests.py
+├── tests/
+│   ├── test_memoria.py
+│   ├── test_operaciones.py
+│   └── test_seguridad.py
+├── entrega_2/
+├── entrega_3/
+├── entrega_4/
+│   ├── informe.md
+│   ├── ficha_tecnica.md
+│   └── matriz_validacion.md
 ├── base_conocimiento.json
 ├── requirements.txt
 ├── .env.example
-├── .gitignore
-├── entrega_2/
-├── entrega_3/
-└── entrega_4/
-    ├── agente.py
-    ├── herramientas.py
-    ├── reindexar_ollama.py
-    ├── api.py
-    ├── observabilidad.py
-    ├── seguridad.py
-    ├── security_tests.py
-    ├── prueba_agente.py
-    ├── informe.md
-    ├── ficha_tecnica.md
-    └── README.md
+└── .gitignore
 ```
 
-Los directorios de ChromaDB, las bases SQLite, los logs y los entornos virtuales se generan localmente y están excluidos mediante `.gitignore`.
+El esquema muestra los componentes principales. Las entregas anteriores conservan su material académico. Los datos locales del agente permanecen actualmente en `entrega_4/`; sus rutas están centralizadas en `tecnosupply/config.py`.
 
 ## Requisitos
 
 - Python 3.12.
 - Ollama instalado y ejecutándose.
-- Acceso opcional a una cuenta de LangSmith para visualizar trazas.
-- Windows PowerShell o una terminal compatible.
+- Una terminal PowerShell para seguir los ejemplos.
+- Una clave de LangSmith si se desea enviar trazas a ese servicio.
 
-## Instalación desde cero
+## Instalación
 
-Ubicado en la raíz del repositorio:
+Ejecutar desde la raíz del repositorio:
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-Instalar los modelos locales requeridos:
+Descargar los modelos locales:
 
 ```powershell
 ollama pull qwen3:4b-instruct
 ollama pull nomic-embed-text
-```
-
-Verificar que Ollama esté disponible:
-
-```powershell
 ollama list
 ```
 
-## Configuración de variables de entorno
+Si Ollama no está ejecutándose, iniciarlo antes de reindexar o consultar al agente. En una instalación sin servicio activo puede iniciarse con `ollama serve` en otra terminal.
 
-Copiar el archivo de ejemplo:
+Los comandos siguientes usan `python` del entorno virtual activado. Si el entorno existente del proyecto se llama `.venv_ragas`, también puede activarse con `.\.venv_ragas\Scripts\Activate.ps1`.
+
+## Configuración y LangSmith
+
+Crear `.env` desde el ejemplo, únicamente si todavía no existe:
 
 ```powershell
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) {
+    Copy-Item .env.example .env
+}
 ```
 
-Configurar estas variables en `.env`:
+Para enviar trazas, configurar en `.env`:
 
 ```env
-LANGSMITH_API_KEY=
-LANGSMITH_TRACING=true
-LANGSMITH_PROJECT=tecnosupply-agente-entrega4
+LANGSMITH_API_KEY=tu_clave_de_langsmith
 ```
 
-`LANGSMITH_API_KEY` es opcional para ejecutar el agente, pero necesaria para enviar trazas a LangSmith. No subir `.env` al repositorio.
+El punto de entrada actual carga el `.env` de la raíz y habilita las trazas para el proyecto `tecnosupply-agente-entrega4`. La clave es opcional para la inferencia local y necesaria para enviar trazas a LangSmith. Mantener `.env` fuera de Git.
 
-## Generación de la base vectorial local
+Los nombres de modelos, la URL de Ollama, las rutas de persistencia y el límite de ejecución se definen en `tecnosupply/config.py`.
 
-Antes de utilizar el agente por primera vez, generar el índice vectorial local:
+## Preparar la base vectorial
+
+Antes de la primera consulta de conocimiento:
 
 ```powershell
-python entrega_4/reindexar_ollama.py
+python -m scripts.reindexar_ollama
 ```
 
-La salida esperada informa que se indexaron los 15 documentos de `base_conocimiento.json` en:
+El comando lee `base_conocimiento.json`, genera embeddings con `nomic-embed-text` y realiza un `upsert` por identificador en la colección `conocimiento_tecnosupply_ollama`. La fuente del proyecto contiene 15 documentos. La colección se persiste en `entrega_4/chroma_ollama/`.
 
-```text
-entrega_4/chroma_ollama/
-```
+Generación y búsqueda utilizan el mismo modelo de embeddings. Si se cambia de modelo, debe reconstruirse una colección compatible antes de consultarla.
 
-## Prueba del agente
+## Iniciar la API
 
-Ejecutar la matriz de validación:
+Desde la raíz del repositorio, con el entorno activado:
 
 ```powershell
-python entrega_4/prueba_agente.py
+python -m uvicorn tecnosupply.main:app --port 8000
 ```
 
-La prueba valida:
+Para recarga automática durante desarrollo puede agregarse `--reload`.
 
-1. Recuperación de conocimiento de soporte.
-2. Consulta del estado operativo de un pedido.
-3. Registro de un reclamo.
-4. Memoria persistente entre turnos mediante el mismo `thread_id`.
+- Documentación interactiva: [Swagger](http://127.0.0.1:8000/docs).
+- Estado básico: [Health](http://127.0.0.1:8000/health).
 
-## Ejecutar la API REST
+Al cargar el agente se crean las tablas operativas si faltan y se insertan los pedidos de demostración que todavía no existen. Los registros existentes se conservan.
 
-Desde la raíz del proyecto:
-
-```powershell
-python -m uvicorn entrega_4.api:app --reload --port 8000
-```
-
-La API queda disponible en:
-
-- Documentación Swagger: `http://127.0.0.1:8000/docs`
-- Health check: `http://127.0.0.1:8000/health`
-
-## Endpoints
+## Endpoints y memoria mediante HTTP
 
 ### `GET /health`
 
-Comprueba que los recursos locales necesarios existan.
-
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/health"
+Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health'
 ```
+
+Devuelve el modelo configurado y comprueba la existencia de las rutas de memoria, operaciones y ChromaDB. Es una comprobación de configuración y archivos: no ejecuta una inferencia de prueba ni verifica la disponibilidad de Ollama.
 
 ### `POST /consultar`
 
-Envía una consulta al agente.
+Desde una segunda terminal PowerShell:
 
 ```powershell
+$hilo = 'demo-memoria-001'
 $body = @{
-    consulta = "¿Cuál es el estado del pedido PED-1002?"
-    thread_id = "demo-001"
+    consulta = '¿Cuál es el estado del pedido PED-1003?'
+    thread_id = $hilo
 } | ConvertTo-Json
 
 Invoke-RestMethod `
-    -Uri "http://127.0.0.1:8000/consultar" `
+    -Uri 'http://127.0.0.1:8000/consultar' `
     -Method Post `
-    -ContentType "application/json" `
-    -Body $body |
+    -ContentType 'application/json; charset=utf-8' `
+    -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) |
     ConvertTo-Json -Depth 5
 ```
+
+La respuesta incluye `thread_id`, `respuesta` y `herramientas_usadas`. Para PED-1003 se espera el producto Mouse Logitech MX Master y el estado en tránsito.
+
+Enviar una pregunta de seguimiento con el mismo hilo:
+
+```powershell
+$body = @{
+    consulta = '¿Cuál era el producto de ese pedido?'
+    thread_id = $hilo
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+    -Uri 'http://127.0.0.1:8000/consultar' `
+    -Method Post `
+    -ContentType 'application/json; charset=utf-8' `
+    -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) |
+    ConvertTo-Json -Depth 5
+```
+
+Para seguimientos de producto o estado, la aplicación puede completar una referencia como “ese pedido” con la última mención inequívoca del usuario en el mismo hilo. El historial visible conserva la pregunta original. Esta resolución no elige entre varios pedidos ni completa solicitudes de acciones.
 
 ### `GET /estado/{thread_id}`
 
-Muestra el historial persistente de un hilo de conversación.
-
 ```powershell
 Invoke-RestMethod `
-    -Uri "http://127.0.0.1:8000/estado/demo-001" |
+    -Uri 'http://127.0.0.1:8000/estado/demo-memoria-001' |
     ConvertTo-Json -Depth 5
 ```
 
-Para demostrar persistencia, detener la API con `Ctrl + C`, volver a iniciarla y consultar nuevamente el mismo endpoint.
+Devuelve el historial visible y enmascarado. Para demostrar persistencia, detener Uvicorn con `Ctrl+C`, volver a iniciarlo y consultar el mismo hilo. También puede enviarse otra pregunta de seguimiento con ese `thread_id`.
 
 ### `GET /metricas`
 
-Devuelve métricas acumuladas de operación.
-
 ```powershell
-Invoke-RestMethod `
-    -Uri "http://127.0.0.1:8000/metricas" |
+Invoke-RestMethod -Uri 'http://127.0.0.1:8000/metricas' |
     ConvertTo-Json -Depth 5
 ```
 
-Incluye cantidad de consultas, errores, bloqueos, latencia promedio, p95 y frecuencia de herramientas.
+Incluye consultas registradas, errores, bloqueos, latencia promedio, p95 y frecuencia de uso de herramientas. Las latencias agregadas corresponden a consultas con estado `ok`; p95 usa el método de rango más cercano. Los datos se acumulan en SQLite y sobreviven al reinicio.
 
-## Seguridad
+## Herramientas y fundamentación
 
-La API integra los siguientes guardrails:
+| Herramienta | Tipo | Fuente o efecto |
+|---|---|---|
+| `buscar_conocimiento` | Retriever | Recupera hasta tres documentos vigentes de ChromaDB. |
+| `consultar_estado_pedido` | Sensor | Lee un pedido de la base operativa SQLite. |
+| `registrar_reclamo` | Actuador | Inserta un reclamo para un pedido existente, con estado inicial `abierto`. |
 
-- Rechazo de consultas superiores a 1000 caracteres.
-- Detección de patrones frecuentes de prompt injection.
-- Enmascarado de emails, DNI, CUIT y teléfonos en la respuesta.
-- Registro de bloqueos dentro de las métricas y logs.
+Las respuestas de conocimiento se construyen a partir del contenido del primer documento recuperado. Las respuestas operativas se forman con los campos devueltos por las herramientas. El límite de ejecución del grafo se configura mediante `recursion_limit`, actualmente con valor 8; limita pasos del grafo, no equivale a ocho llamadas garantizadas al modelo.
 
-Ejecutar las pruebas automáticas:
+Si el modelo no ejecuta ninguna herramienta, existe un fallback de lectura. Puede consultar un pedido identificado o recuperar conocimiento. Este fallback nunca ejecuta `registrar_reclamo`. Registrar un reclamo no aprueba una devolución, reemplazo ni reintegro.
+
+## Pruebas automáticas
 
 ```powershell
-python entrega_4/security_tests.py
+python -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-La salida esperada finaliza con:
+La suite actual tiene 27 pruebas:
+
+- 8 de referencias conversacionales, aislamiento del contexto proporcionado al resolver, selección del pedido y conservación de la pregunta original.
+- 9 de consultas, validación, persistencia, integridad referencial y reinicialización de operaciones.
+- 10 de guardrails, contratos HTTP, enmascarado, errores y registro de métricas.
+
+Las llamadas al modelo se sustituyen por dobles de prueba. Las escrituras de operaciones y observabilidad se verifican con bases y logs temporales. Estas pruebas no generan inferencias ni reclamos en la base operativa habitual; la importación del agente puede inicializar los recursos locales que requiere su arranque.
+
+Resultado esperado:
 
 ```text
-Ran 5 tests ...
+Ran 27 tests ...
 OK
 ```
 
-## Observabilidad y LangSmith
+Para ejecutar únicamente las 10 pruebas de seguridad:
 
-Cada consulta se registra en:
-
-```text
-entrega_4/logs/agente.jsonl
-entrega_4/observabilidad.sqlite
+```powershell
+python -m scripts.security_tests
 ```
 
-Las trazas de LangSmith permiten visualizar:
+Este comando conserva el nombre `security_tests.py` solicitado por la consigna y carga las pruebas de `tests/test_seguridad.py`.
 
-- Entrada del usuario.
-- Decisión de herramientas.
-- Argumentos enviados a cada herramienta.
-- Resultado de las herramientas.
-- Respuesta final.
-- Latencia de ejecución.
+## Validación manual del agente
 
-El modelo se ejecuta localmente con Ollama. Por lo tanto, no hay costo variable de inferencia de un proveedor externo; el costo se concentra en el uso del equipo local.
+Con Ollama disponible y la colección ya indexada:
 
-## Notas de seguridad
+```powershell
+python -m scripts.prueba_agente
+```
 
-- No incluir claves reales dentro del código ni en archivos versionados.
-- `.env`, bases SQLite, logs y bases vectoriales deben permanecer ignorados por Git.
-- El registro de un reclamo no aprueba automáticamente devolución, reemplazo ni reintegro.
-- La información de pedidos y reclamos corresponde a datos simulados para fines académicos.
+Ejecuta los cuatro escenarios: conocimiento, sensor, actuador y memoria entre turnos. El escenario del actuador crea un reclamo simulado para PED-1004 en la base operativa local. Cada ejecución usa identificadores de conversación nuevos.
+
+## Seguridad
+
+Pydantic valida los tipos y campos requeridos del contrato HTTP. Los guardrails de aplicación rechazan consultas vacías, consultas de más de 1000 caracteres y patrones conocidos de prompt injection antes de ejecutar el agente. Un bloqueo controlado devuelve HTTP 400; los errores de esquema HTTP se responden con 422.
+
+Las respuestas y el historial expuesto por HTTP se enmascaran mediante patrones de email, DNI, CUIT y teléfonos etiquetados. Estos controles basados en patrones tienen cobertura limitada y no sustituyen la autenticación ni la autorización. `thread_id` identifica una conversación; no acredita la identidad de un cliente.
+
+Los pedidos y reclamos del proyecto son datos simulados para fines académicos.
+
+## Persistencia y observabilidad
+
+| Ruta local | Contenido |
+|---|---|
+| `entrega_4/operaciones.db` | Pedidos y reclamos. |
+| `entrega_4/memoria_agente.sqlite` | Checkpoints de LangGraph por hilo. |
+| `entrega_4/chroma_ollama/` | Documentos y embeddings de ChromaDB. |
+| `entrega_4/observabilidad.sqlite` | Métricas persistentes de consultas. |
+| `entrega_4/logs/agente.jsonl` | Eventos estructurados JSON Lines. |
+
+Los logs de consulta registran longitud de entrada, hilo, latencia, estado, herramientas y errores o bloqueos. Las trazas de LangSmith permiten inspeccionar las etapas del grafo y las llamadas a herramientas. Los checkpoints y las trazas pueden contener contenido conversacional, aunque la salida HTTP esté enmascarada.
+
+La inferencia local no genera cargos por tokens de un proveedor de modelos externo. Tiene costos de hardware, energía, almacenamiento y tiempo de ejecución. LangSmith es un servicio separado y su uso depende del plan y volumen de trazas.
+
+Las bases, índices, logs, entornos virtuales y `.env` están excluidos mediante `.gitignore`. La base vectorial puede regenerarse; el historial de conversaciones y los reclamos requieren una copia de seguridad si se desea conservarlos.
+
+## Documentación del trabajo
+
+- [Informe de la entrega final](entrega_4/informe.md).
+- [Ficha técnica](entrega_4/ficha_tecnica.md).
+- [Matriz de validación](entrega_4/matriz_validacion.md).
+- [Material de la Entrega 2](entrega_2/).
+- [Material de la Entrega 3](entrega_3/).
 
 ## Tecnologías
 
-- Python 3.12
-- LangGraph
-- LangChain
-- Ollama
-- Qwen 3 4B Instruct
-- Nomic Embed Text
-- ChromaDB
-- SQLite
-- FastAPI
-- Uvicorn
-- LangSmith
+Python 3.12, LangGraph, LangChain, Ollama, Qwen 3 4B Instruct, Nomic Embed Text, ChromaDB, SQLite, FastAPI, Pydantic, Uvicorn y LangSmith.
